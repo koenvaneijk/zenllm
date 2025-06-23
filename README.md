@@ -1,45 +1,93 @@
-# ZenLLM
+# 🧘‍♂️ ZenLLM
 
-A zen, simple, and unified API to prompt LLMs from different providers using a single function call.
+[![PyPI version](https://badge.fury.io/py/zenllm.svg)](https://badge.fury.io/py/zenllm)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/release/python-380/)
 
-**Goal:** No fancy dependencies, no SDK bloat. Just `requests` and your API keys. Easily switch between models and providers without changing your code.
+The zen, simple, and unified API to prompt LLMs from different providers using a single function call.
 
-## Installation
+> **Our Goal:** No fancy dependencies, no SDK bloat. Just `requests` and your API keys. Easily switch between models and providers without changing your code.
+
+## ✨ Key Features
+
+- **Unified API**: A single `prompt()` function for Anthropic, Google, and OpenAI.
+- **Easy Model Switching**: Change models and providers with a single `model` argument.
+- **Lightweight**: Built with only the `requests` library. No heavy SDKs to install.
+- **Simple Authentication**: Just set your provider's API key as an environment variable.
+
+## 🚀 Installation
 
 ```bash
-pip install .
+pip install zenllm
 ```
 
-## Usage
+## 💡 Usage
+
+First, make sure you've set your API key as an environment variable (e.g., `export ANTHROPIC_API_KEY="your-key"`).
+
+### Basic Prompt (Anthropic's Claude)
 
 ```python
 from zenllm import prompt
 
-# Simple prompt to Anthropic's Claude (default)
+# The default model is from Anthropic
 response = prompt("Why is the sky blue?")
 print(response)
+```
 
-# Use Google's Gemini with a system prompt
+### Using another Provider (Google's Gemini)
+
+Simply change the model name to use a different provider.
+
+```python
+from zenllm import prompt
+
 response = prompt(
     "Why is the sky blue?",
-    model="gemini-1.5-pro-latest",
+    model="gemini-2.5-pro",
     system_prompt="Reply only in French."
 )
 print(response)
+```
 
-# Stream the response from Anthropic
-response_stream = prompt("Tell me a story about a robot.", model="claude-3-5-sonnet-20240620", stream=True)
+### Using OpenAI
+
+```python
+from zenllm import prompt
+
+response = prompt(
+    "Tell me a three sentence bedtime story about a unicorn.",
+    model="gpt-4.1"
+)
+print(response)
+```
+
+### Streaming Responses
+
+Set `stream=True` to get a generator of response chunks.
+
+```python
+from zenllm import prompt
+
+response_stream = prompt(
+    "Tell me a story about a robot.", 
+    model="claude-sonnet-4-20250514", 
+    stream=True
+)
 for chunk in response_stream:
     print(chunk, end="", flush=True)
 ```
 
-## Supported Providers
+## ✅ Supported Providers
 
-- **Anthropic Claude**: Requires `ANTHROPIC_API_KEY` environment variable.
-  - Example Models: `claude-3-5-sonnet-20240620`, `claude-3-opus-20240229`
-- **Google Gemini**: Requires `GEMINI_API_KEY` environment variable.
-  - Example Models: `gemini-1.5-pro-latest`, `gemini-1.5-flash-latest`
+| Provider  | Environment Variable  | Model Prefix | Example Models                               |
+| :-------- | :-------------------- | :----------- | :------------------------------------------- |
+| Anthropic | `ANTHROPIC_API_KEY`   | `claude`     | `claude-sonnet-4-20250514`, `claude-opus-4-20250514` |
+| Google    | `GEMINI_API_KEY`      | `gemini`     | `gemini-2.5-pro`, `gemini-2.5-flash`         |
+| OpenAI    | `OPENAI_API_KEY`      | `gpt`        | `gpt-4.1`                                    |
 
-## License
+*Note: Streaming is not yet supported for OpenAI with this library.*
 
-MIT License - Copyright (c) 2024 Koen van Eijk
+## 📜 License
+
+MIT License - Copyright (c) 2025 Koen van Eijk
