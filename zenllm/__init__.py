@@ -1,11 +1,13 @@
 from .providers.anthropic import AnthropicProvider
 from .providers.google import GoogleProvider
+from .providers.openai import OpenAIProvider
 import warnings
 
 # A mapping from model name prefixes to provider instances
 _PROVIDERS = {
     "claude": AnthropicProvider(),
     "gemini": GoogleProvider(),
+    "gpt": OpenAIProvider(),
 }
 
 def _get_provider(model_name):
@@ -33,7 +35,7 @@ def prompt(
     Args:
         prompt_text (str): The user's prompt.
         model (str, optional): The model to use. 
-            Defaults to 'claude-3-5-sonnet-20240620'.
+            Defaults to 'claude-sonnet-4-20250514'.
             Model name prefix (e.g., 'claude', 'gemini') determines the provider.
         system_prompt (str, optional): An optional system prompt.
         stream (bool, optional): Whether to stream the response. Defaults to False.
