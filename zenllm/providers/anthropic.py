@@ -6,7 +6,7 @@ from .base import LLMProvider
 class AnthropicProvider(LLMProvider):
     API_URL = "https://api.anthropic.com/v1/messages"
     API_KEY_NAME = "ANTHROPIC_API_KEY"
-    DEFAULT_MODEL = "claude-3-5-sonnet-20240620"
+    DEFAULT_MODEL = "claude-sonnet-4-20250514"
 
     def _check_api_key(self):
         api_key = os.getenv(self.API_KEY_NAME)

@@ -11,8 +11,8 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://koenvaneijk.com",
-    package_dir={"": "src"},
-    packages=find_packages(where="src"),
+    package_dir={"": "zenllm"},
+    packages=find_packages(where="zenllm"),
     install_requires=[
         "requests",
     ],
@@ -22,5 +22,5 @@ setup(
         "Operating System :: OS Independent",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
-    python_requires="&gt;=3.8",
+    python_requires=">=3.8",
 )

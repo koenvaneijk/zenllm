@@ -22,7 +22,7 @@ def _get_provider(model_name):
 
 def prompt(
     prompt_text,
-    model="claude-3-5-sonnet-20240620",
+    model="claude-sonnet-4-20250514",
     system_prompt=None,
     stream=False,
     **kwargs

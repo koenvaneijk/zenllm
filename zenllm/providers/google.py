@@ -6,7 +6,7 @@ from .base import LLMProvider
 class GoogleProvider(LLMProvider):
     API_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:{method}?key={api_key}"
     API_KEY_NAME = "GEMINI_API_KEY"
-    DEFAULT_MODEL = "gemini-1.5-pro-latest"
+    DEFAULT_MODEL = "gemini-2.5-pro"
 
     def _check_api_key(self):
         api_key = os.getenv(self.API_KEY_NAME)
