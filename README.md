@@ -82,12 +82,12 @@ for chunk in response_stream:
 
 ## ✅ Supported Providers
 
-| Provider  | Environment Variable  | Model Prefix | Example Models                               |
-| :-------- | :-------------------- | :----------- | :------------------------------------------- |
+| Provider  | Environment Variable  | Model Prefix | Example Models                                       |
+| :-------- | :-------------------- | :----------- | :--------------------------------------------------- |
 | Anthropic | `ANTHROPIC_API_KEY`   | `claude`     | `claude-sonnet-4-20250514`, `claude-opus-4-20250514` |
-| Deepseek  | `DEEPSEEK_API_KEY`    | `deepseek`   | `deepseek-chat`                              |
-| Google    | `GEMINI_API_KEY`      | `gemini`     | `gemini-2.5-pro`, `gemini-2.5-flash`         |
-| OpenAI    | `OPENAI_API_KEY`      | `gpt`        | `gpt-4.1`                                    |
+| Deepseek  | `DEEPSEEK_API_KEY`    | `deepseek`   | `deepseek-chat`, `deepseek-reasoner`                 |
+| Google    | `GEMINI_API_KEY`      | `gemini`     | `gemini-2.5-pro`, `gemini-2.5-flash`                 |
+| OpenAI    | `OPENAI_API_KEY`      | `gpt`        | `gpt-4.1`                                            |
 
 *Note: Streaming is not yet supported for OpenAI with this library.*
 
