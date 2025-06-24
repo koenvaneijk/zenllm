@@ -1,3 +1,4 @@
+import os
 from .providers.anthropic import AnthropicProvider
 from .providers.google import GoogleProvider
 from .providers.openai import OpenAIProvider
@@ -24,9 +25,13 @@ def _get_provider(model_name):
     return _PROVIDERS["claude"]
 
 
+# Set the default model from an environment variable, with a fallback.
+DEFAULT_MODEL = os.getenv("ZENLLM_DEFAULT_MODEL", "claude-sonnet-4-20250514")
+
+
 def prompt(
     prompt_text,
-    model="claude-sonnet-4-20250514",
+    model=DEFAULT_MODEL,
     system_prompt=None,
     stream=False,
     **kwargs
@@ -36,8 +41,9 @@ def prompt(
 
     Args:
         prompt_text (str): The user's prompt.
-        model (str, optional): The model to use. 
-            Defaults to 'claude-sonnet-4-20250514'.
+        model (str, optional): The model to use.
+            Defaults to the value of the ZENLLM_DEFAULT_MODEL environment
+            variable, or "claude-sonnet-4-20250514" if not set.
             Model name prefix (e.g., 'claude', 'gemini') determines the provider.
         system_prompt (str, optional): An optional system prompt.
         stream (bool, optional): Whether to stream the response. Defaults to False.

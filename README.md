@@ -25,12 +25,14 @@ pip install zenllm
 
 First, make sure you've set your API key as an environment variable (e.g., `export ANTHROPIC_API_KEY="your-key"`).
 
-### Basic Prompt (Anthropic's Claude)
+### Basic Prompt
+
+The default model is `claude-sonnet-4-20250514`. You can change this by setting the `ZENLLM_DEFAULT_MODEL` environment variable.
 
 ```python
 from zenllm import prompt
 
-# The default model is from Anthropic
+# Uses the default model (either the fallback or ZENLLM_DEFAULT_MODEL)
 response = prompt("Why is the sky blue?")
 print(response)
 ```
@@ -83,6 +85,7 @@ for chunk in response_stream:
 | Provider  | Environment Variable  | Model Prefix | Example Models                               |
 | :-------- | :-------------------- | :----------- | :------------------------------------------- |
 | Anthropic | `ANTHROPIC_API_KEY`   | `claude`     | `claude-sonnet-4-20250514`, `claude-opus-4-20250514` |
+| Deepseek  | `DEEPSEEK_API_KEY`    | `deepseek`   | `deepseek-chat`                              |
 | Google    | `GEMINI_API_KEY`      | `gemini`     | `gemini-2.5-pro`, `gemini-2.5-flash`         |
 | OpenAI    | `OPENAI_API_KEY`      | `gpt`        | `gpt-4.1`                                    |
 
