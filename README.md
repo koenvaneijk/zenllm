@@ -23,11 +23,11 @@ pip install zenllm
 
 ## 💡 Usage
 
-First, make sure you've set your API key as an environment variable (e.g., `export ANTHROPIC_API_KEY="your-key"`).
+First, make sure you've set your API key as an environment variable (e.g., `export OPENAI_API_KEY="your-key"`).
 
 ### Basic Prompt
 
-The default model is `claude-sonnet-4-20250514`. You can change this by setting the `ZENLLM_DEFAULT_MODEL` environment variable.
+The default model is `gpt-4.1`. You can change this by setting the `ZENLLM_DEFAULT_MODEL` environment variable.
 
 ```python
 from zenllm import prompt
@@ -52,14 +52,14 @@ response = prompt(
 print(response)
 ```
 
-### Using OpenAI
+### Using Anthropic
 
 ```python
 from zenllm import prompt
 
 response = prompt(
     "Tell me a three sentence bedtime story about a unicorn.",
-    model="gpt-4.1"
+    model="claude-sonnet-4-20250514"
 )
 print(response)
 ```

@@ -19,14 +19,14 @@ def _get_provider(model_name):
         if model_name.lower().startswith(prefix):
             return provider
     
-    # Default to Anthropic if no other provider matches
-    warnings.warn(f"No provider found for model '{model_name}'. Defaulting to Anthropic. "
+    # Default to OpenAI if no other provider matches
+    warnings.warn(f"No provider found for model '{model_name}'. Defaulting to OpenAI. "
                   f"Supported prefixes are: {list(_PROVIDERS.keys())}")
-    return _PROVIDERS["claude"]
+    return _PROVIDERS["gpt"]
 
 
 # Set the default model from an environment variable, with a fallback.
-DEFAULT_MODEL = os.getenv("ZENLLM_DEFAULT_MODEL", "claude-sonnet-4-20250514")
+DEFAULT_MODEL = os.getenv("ZENLLM_DEFAULT_MODEL", "gpt-4.1")
 
 
 def prompt(
@@ -43,7 +43,7 @@ def prompt(
         prompt_text (str): The user's prompt.
         model (str, optional): The model to use.
             Defaults to the value of the ZENLLM_DEFAULT_MODEL environment
-            variable, or "claude-sonnet-4-20250514" if not set.
+            variable, or "gpt-4.1" if not set.
             Model name prefix (e.g., 'claude', 'gemini') determines the provider.
         system_prompt (str, optional): An optional system prompt.
         stream (bool, optional): Whether to stream the response. Defaults to False.
