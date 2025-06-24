@@ -64,6 +64,20 @@ response = prompt(
 print(response)
 ```
 
+### Using TogetherAI
+
+To use models from TogetherAI, prefix the model name with `together/`.
+
+```python
+from zenllm import prompt
+
+response = prompt(
+    "What are the top 3 things to do in New York?",
+    model="together/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"
+)
+print(response)
+```
+
 ### Streaming Responses
 
 Set `stream=True` to get a generator of response chunks.
@@ -88,6 +102,7 @@ for chunk in response_stream:
 | Deepseek  | `DEEPSEEK_API_KEY`    | `deepseek`   | `deepseek-chat`, `deepseek-reasoner`                 |
 | Google    | `GEMINI_API_KEY`      | `gemini`     | `gemini-2.5-pro`, `gemini-2.5-flash`                 |
 | OpenAI    | `OPENAI_API_KEY`      | `gpt`        | `gpt-4.1`                                            |
+| TogetherAI| `TOGETHER_API_KEY`    | `together`   | `together/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo` |
 
 *Note: Streaming is not yet supported for OpenAI with this library.*
 
