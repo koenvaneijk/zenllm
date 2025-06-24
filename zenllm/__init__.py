@@ -1,6 +1,7 @@
 from .providers.anthropic import AnthropicProvider
 from .providers.google import GoogleProvider
 from .providers.openai import OpenAIProvider
+from .providers.deepseek import DeepseekProvider
 import warnings
 
 # A mapping from model name prefixes to provider instances
@@ -8,6 +9,7 @@ _PROVIDERS = {
     "claude": AnthropicProvider(),
     "gemini": GoogleProvider(),
     "gpt": OpenAIProvider(),
+    "deepseek": DeepseekProvider(),
 }
 
 def _get_provider(model_name):
