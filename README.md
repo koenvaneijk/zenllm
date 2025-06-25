@@ -94,6 +94,33 @@ for chunk in response_stream:
     print(chunk, end="", flush=True)
 ```
 
+### Using OpenAI-Compatible APIs
+
+You can use `zenllm` with any OpenAI-compatible API endpoint, such as local models or other custom services. Simply pass `api_url` and an optional `api_key` to the `prompt` function.
+
+When using a custom `api_url`, use a model name with a `gpt-` prefix to ensure the request is handled by the OpenAI provider.
+
+```python
+from zenllm import prompt
+
+# Example with a local model endpoint (no API key needed)
+response = prompt(
+    "Why is the sky blue?",
+    model="gpt-4", # Selects the OpenAI provider
+    api_url="http://localhost:1234/v1/responses"
+)
+print(response)
+
+# Example with a custom API that requires its own key
+response = prompt(
+    "Why is the sky blue?",
+    model="gpt-4",
+    api_url="https://api.custom-provider.com/v1/responses",
+    api_key="your-custom-api-key"
+)
+print(response)
+```
+
 ## ✅ Supported Providers
 
 | Provider  | Environment Variable  | Model Prefix | Example Models                                       |

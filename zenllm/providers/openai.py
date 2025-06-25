@@ -24,12 +24,24 @@ class OpenAIProvider(LLMProvider):
         raise NotImplementedError("Streaming is not supported for this OpenAI provider yet.")
 
     def call(self, model, messages, system_prompt=None, stream=False, **kwargs):
-        api_key = self._check_api_key()
-        
+        # Pop custom arguments to avoid sending them in the payload
+        api_url = kwargs.pop("api_url", self.API_URL)
+        api_key_override = kwargs.pop("api_key", None)
+
+        api_key = api_key_override
+        if not api_key:
+            # If a custom URL is used, the API key is optional (e.g., local models).
+            # If the default URL is used, the API key from env is required.
+            if api_url == self.API_URL:
+                api_key = self._check_api_key()
+            else:
+                api_key = os.getenv(self.API_KEY_NAME)
+
         headers = {
-            "Authorization": f"Bearer {api_key}",
             "content-type": "application/json",
         }
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
 
         if not messages:
             raise ValueError("Messages list cannot be empty.")
@@ -49,7 +61,7 @@ class OpenAIProvider(LLMProvider):
         
         payload.update(kwargs)
 
-        response = requests.post(self.API_URL, headers=headers, json=payload, stream=stream)
+        response = requests.post(api_url, headers=headers, json=payload, stream=stream)
         response.raise_for_status()
 
         if stream:
