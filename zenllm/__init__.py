@@ -17,8 +17,8 @@ _PROVIDERS = {
 
 def _get_provider(model_name, **kwargs):
     """Selects the provider based on the model name or kwargs."""
-    # If api_url is provided, always use the OpenAI provider for compatibility.
-    if "api_url" in kwargs:
+    # If base_url is provided, always use the OpenAI provider for compatibility.
+    if "base_url" in kwargs:
         return _PROVIDERS["gpt"]
 
     for prefix, provider in _PROVIDERS.items():

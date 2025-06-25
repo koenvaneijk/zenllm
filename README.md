@@ -96,9 +96,9 @@ for chunk in response_stream:
 
 ### Using OpenAI-Compatible APIs
 
-You can use `zenllm` with any OpenAI-compatible API endpoint, such as local models (e.g., via Ollama, LM Studio) or other custom services.
+You can use `zenllm` with any OpenAI-compatible API endpoint, such as local models (e.g., via Ollama, LM Studio) or other custom services. This is done by providing a `base_url`. `zenllm` will automatically append `/chat/completions` to this URL.
 
-By providing the `api_url` parameter, `zenllm` will automatically use the OpenAI provider, allowing you to use any model name served by that endpoint. You can also provide a custom `api_key` if required.
+By providing the `base_url` parameter, `zenllm` will automatically use the OpenAI provider, allowing you to use any model name served by that endpoint. You can also provide a custom `api_key` if required.
 
 ```python
 from zenllm import prompt
@@ -108,7 +108,7 @@ from zenllm import prompt
 response = prompt(
     "Why is the sky blue?",
     model="qwen3:30b", 
-    api_url="http://localhost:11434/v1/chat/completions"
+    base_url="http://localhost:11434/v1"
 )
 print(response)
 
@@ -116,7 +116,7 @@ print(response)
 response = prompt(
     "Why is the sky blue?",
     model="custom-model-name",
-    api_url="https://api.custom-provider.com/v1/chat/completions",
+    base_url="https://api.custom-provider.com/v1",
     api_key="your-custom-api-key"
 )
 print(response)
@@ -125,7 +125,7 @@ print(response)
 stream = prompt(
     "Tell me a story.",
     model="qwen3:30b", 
-    api_url="http://localhost:11434/v1/chat/completions",
+    base_url="http://localhost:11434/v1",
     stream=True
 )
 for chunk in stream:
@@ -142,7 +142,7 @@ for chunk in stream:
 | OpenAI    | `OPENAI_API_KEY`      | `gpt`        | `gpt-4.1`                                            |
 | TogetherAI| `TOGETHER_API_KEY`    | `together`   | `together/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo` |
 
-*Note: For OpenAI-compatible endpoints (like local models), provide the `api_url` parameter. This will route the request correctly, regardless of the model name's prefix.*
+*Note: For OpenAI-compatible endpoints (like local models), provide the `base_url` parameter. This will route the request correctly, regardless of the model name's prefix.*
 
 ## 📜 License
 

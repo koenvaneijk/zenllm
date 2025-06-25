@@ -4,7 +4,7 @@ import requests
 from .base import LLMProvider
 
 class OpenAIProvider(LLMProvider):
-    API_URL = "https://api.openai.com/v1/chat/completions"
+    BASE_URL = "https://api.openai.com/v1"
     API_KEY_NAME = "OPENAI_API_KEY"
     DEFAULT_MODEL = "gpt-4.1"
 
@@ -37,14 +37,16 @@ class OpenAIProvider(LLMProvider):
 
     def call(self, model, messages, system_prompt=None, stream=False, **kwargs):
         # Pop custom arguments to avoid sending them in the payload
-        api_url = kwargs.pop("api_url", self.API_URL)
+        base_url = kwargs.pop("base_url", self.BASE_URL)
         api_key_override = kwargs.pop("api_key", None)
+        
+        full_url = base_url.rstrip('/') + "/chat/completions"
 
         api_key = api_key_override
         if not api_key:
-            # If a custom URL is used, the API key is optional (e.g., local models).
-            # If the default URL is used, the API key from env is required.
-            if api_url == self.API_URL:
+            # If a custom base_url is used, the API key is optional.
+            # If the default base_url is used, the API key from env is required.
+            if base_url == self.BASE_URL:
                 api_key = self._check_api_key()
             else:
                 api_key = os.getenv(self.API_KEY_NAME)
@@ -72,7 +74,7 @@ class OpenAIProvider(LLMProvider):
         
         payload.update(kwargs)
 
-        response = requests.post(api_url, headers=headers, json=payload, stream=stream)
+        response = requests.post(full_url, headers=headers, json=payload, stream=stream)
         response.raise_for_status()
 
         if stream:
