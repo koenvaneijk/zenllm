@@ -15,8 +15,12 @@ _PROVIDERS = {
     "together": TogetherProvider(),
 }
 
-def _get_provider(model_name):
-    """Selects the provider based on the model name."""
+def _get_provider(model_name, **kwargs):
+    """Selects the provider based on the model name or kwargs."""
+    # If api_url is provided, always use the OpenAI provider for compatibility.
+    if "api_url" in kwargs:
+        return _PROVIDERS["gpt"]
+
     for prefix, provider in _PROVIDERS.items():
         if model_name.lower().startswith(prefix):
             return provider
@@ -54,7 +58,7 @@ def prompt(
     Returns:
         str or generator: The model's response as a string, or a generator of strings if streaming.
     """
-    provider = _get_provider(model)
+    provider = _get_provider(model, **kwargs)
 
     # Standardize the input message format for the provider
     messages = [{"role": "user", "content": prompt_text}]

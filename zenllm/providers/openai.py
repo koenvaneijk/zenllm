@@ -1,9 +1,10 @@
 import os
+import json
 import requests
 from .base import LLMProvider
 
 class OpenAIProvider(LLMProvider):
-    API_URL = "https://api.openai.com/v1/responses"
+    API_URL = "https://api.openai.com/v1/chat/completions"
     API_KEY_NAME = "OPENAI_API_KEY"
     DEFAULT_MODEL = "gpt-4.1"
 
@@ -17,11 +18,22 @@ class OpenAIProvider(LLMProvider):
         return api_key
 
     def _stream_response(self, response):
-        """
-        Handles streaming responses. The user-provided API docs do not
-        specify a streaming format.
-        """
-        raise NotImplementedError("Streaming is not supported for this OpenAI provider yet.")
+        """Handles streaming responses from an OpenAI-compatible API."""
+        for line in response.iter_lines():
+            if line:
+                decoded_line = line.decode('utf-8')
+                if decoded_line.startswith('data: '):
+                    json_str = decoded_line[6:].strip()
+                    if json_str == '[DONE]':
+                        break
+                    try:
+                        chunk = json.loads(json_str)
+                        delta = chunk.get('choices', [{}])[0].get('delta', {})
+                        content = delta.get('content')
+                        if content:
+                            yield content
+                    except (json.JSONDecodeError, IndexError):
+                        continue
 
     def call(self, model, messages, system_prompt=None, stream=False, **kwargs):
         # Pop custom arguments to avoid sending them in the payload
@@ -43,21 +55,20 @@ class OpenAIProvider(LLMProvider):
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
 
-        if not messages:
-            raise ValueError("Messages list cannot be empty.")
+        # Construct the final messages payload for Chat Completions
+        final_messages = []
+        if system_prompt:
+            final_messages.append({"role": "system", "content": system_prompt})
+        final_messages.extend(messages)
         
-        # This API uses a single 'input' string instead of a messages array.
-        # We'll use the content from the last message.
-        user_input = messages[-1]['content']
+        if not final_messages:
+            raise ValueError("Messages list cannot be empty.")
 
         payload = {
-            "model": model or self.DEFAULT_MODEL,
-            "input": user_input,
+            "model": model,
+            "messages": final_messages,
             "stream": stream,
         }
-        
-        if system_prompt:
-            payload["instructions"] = system_prompt
         
         payload.update(kwargs)
 
@@ -68,4 +79,4 @@ class OpenAIProvider(LLMProvider):
             return self._stream_response(response)
         
         response_data = response.json()
-        return response_data['output'][0]['content'][0]['text']
+        return response_data['choices'][0]['message']['content']

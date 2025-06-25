@@ -96,29 +96,40 @@ for chunk in response_stream:
 
 ### Using OpenAI-Compatible APIs
 
-You can use `zenllm` with any OpenAI-compatible API endpoint, such as local models or other custom services. Simply pass `api_url` and an optional `api_key` to the `prompt` function.
+You can use `zenllm` with any OpenAI-compatible API endpoint, such as local models (e.g., via Ollama, LM Studio) or other custom services.
 
-When using a custom `api_url`, use a model name with a `gpt-` prefix to ensure the request is handled by the OpenAI provider.
+By providing the `api_url` parameter, `zenllm` will automatically use the OpenAI provider, allowing you to use any model name served by that endpoint. You can also provide a custom `api_key` if required.
 
 ```python
 from zenllm import prompt
 
 # Example with a local model endpoint (no API key needed)
+# The model name 'qwen3:30b' does not need a 'gpt-' prefix.
 response = prompt(
     "Why is the sky blue?",
-    model="gpt-4", # Selects the OpenAI provider
-    api_url="http://localhost:1234/v1/responses"
+    model="qwen3:30b", 
+    api_url="http://localhost:11434/v1/chat/completions"
 )
 print(response)
 
 # Example with a custom API that requires its own key
 response = prompt(
     "Why is the sky blue?",
-    model="gpt-4",
-    api_url="https://api.custom-provider.com/v1/responses",
+    model="custom-model-name",
+    api_url="https://api.custom-provider.com/v1/chat/completions",
     api_key="your-custom-api-key"
 )
 print(response)
+
+# Streaming also works with compatible APIs
+stream = prompt(
+    "Tell me a story.",
+    model="qwen3:30b", 
+    api_url="http://localhost:11434/v1/chat/completions",
+    stream=True
+)
+for chunk in stream:
+    print(chunk, end="", flush=True)
 ```
 
 ## ✅ Supported Providers
@@ -131,7 +142,7 @@ print(response)
 | OpenAI    | `OPENAI_API_KEY`      | `gpt`        | `gpt-4.1`                                            |
 | TogetherAI| `TOGETHER_API_KEY`    | `together`   | `together/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo` |
 
-*Note: Streaming is not yet supported for OpenAI with this library.*
+*Note: For OpenAI-compatible endpoints (like local models), provide the `api_url` parameter. This will route the request correctly, regardless of the model name's prefix.*
 
 ## 📜 License
 
