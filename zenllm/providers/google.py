@@ -36,16 +36,17 @@ class GoogleProvider(LLMProvider):
                         for p in parts:
                             if 'text' in p:
                                 yield {"type": "text", "text": p.get("text", "")}
-                            elif 'inline_data' in p:
-                                inline = p.get('inline_data', {})
-                                mime = inline.get('mime_type') or 'image/png'
-                                b64 = inline.get('data', '')
-                                try:
-                                    raw = base64.b64decode(b64) if b64 else b""
-                                except Exception:
-                                    raw = b""
-                                if raw:
-                                    yield {"type": "image", "bytes": raw, "mime": mime}
+                            else:
+                                inline = p.get('inline_data') or p.get('inlineData')
+                                if inline:
+                                    mime = inline.get('mime_type') or inline.get('mimeType') or 'image/png'
+                                    b64 = inline.get('data') or ''
+                                    try:
+                                        raw = base64.b64decode(b64) if b64 else b""
+                                    except Exception:
+                                        raw = b""
+                                    if raw:
+                                        yield {"type": "image", "bytes": raw, "mime": mime}
                     except (json.JSONDecodeError, KeyError, IndexError):
                         continue
         return _stream_generator()
@@ -105,10 +106,10 @@ class GoogleProvider(LLMProvider):
         for p in parts:
             if "text" in p:
                 norm.append({"type": "text", "text": p.get("text", "")})
-            elif "inline_data" in p:
-                inline = p.get("inline_data", {})
-                mime = inline.get("mime_type") or "image/png"
-                data_b64 = inline.get("data", "")
+            elif ("inline_data" in p) or ("inlineData" in p):
+                inline = p.get("inline_data") or p.get("inlineData") or {}
+                mime = inline.get("mime_type") or inline.get("mimeType") or "image/png"
+                data_b64 = inline.get("data") or ""
                 try:
                     raw = base64.b64decode(data_b64) if data_b64 else b""
                 except Exception:
