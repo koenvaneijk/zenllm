@@ -6,14 +6,15 @@
 
 The zen, simple, and unified API to prompt LLMs from different providers using a single function call.
 
-> **Our Goal:** No fancy dependencies, no SDK bloat. Just `requests` and your API keys. Easily switch between models and providers without changing your code.
+> Our Goal: No fancy dependencies, no SDK bloat. Just `requests` and your API keys. Easily switch between models and providers without changing your code.
 
 ## ✨ Key Features
 
-- **Unified API**: A single `prompt()` function for Anthropic, Google, and OpenAI.
-- **Easy Model Switching**: Change models and providers with a single `model` argument.
-- **Lightweight**: Built with only the `requests` library. No heavy SDKs to install.
-- **Simple Authentication**: Just set your provider's API key as an environment variable.
+- Unified API: A single `prompt()` function for Anthropic, Google (Gemini), OpenAI, DeepSeek, and Together.
+- Multimodal: Pass images via path, bytes, file-like, or URL using tiny helpers.
+- Easy Model Switching: Change models and providers with a single `model` argument.
+- Lightweight: Built with only the `requests` library. No heavy SDKs to install.
+- Simple Authentication: Just set your provider's API key as an environment variable.
 
 ## 🚀 Installation
 
@@ -23,9 +24,9 @@ pip install zenllm
 
 ## 💡 Usage
 
-First, make sure you've set your API key as an environment variable (e.g., `export OPENAI_API_KEY="your-key"`).
+First, set your provider’s API key as an environment variable (e.g., `export OPENAI_API_KEY="your-key"`).
 
-### Basic Prompt
+### Basic Prompt (text only)
 
 The default model is `gpt-4.1`. You can change this by setting the `ZENLLM_DEFAULT_MODEL` environment variable.
 
@@ -37,45 +38,68 @@ response = prompt("Why is the sky blue?")
 print(response)
 ```
 
-### Using another Provider (Google's Gemini)
+### Images and Multimodal
 
-Simply change the model name to use a different provider.
+Use the `text()` and `image()` helpers to build content parts. `image()` accepts:
+- path (str or Path)
+- bytes or file-like object (with `.read()`)
+- URL (http/https)
 
 ```python
-from zenllm import prompt
+from zenllm import prompt, text, image
 
-response = prompt(
-    "Why is the sky blue?",
+# OpenAI (Vision)
+resp = prompt(
+    model="gpt-4.1-mini",
+    content=[text("What is in this image?"), image("cheeseburger.jpg")]
+)
+print(resp)
+
+# Gemini (Google)
+resp = prompt(
     model="gemini-2.5-pro",
-    system_prompt="Reply only in French."
+    content=[text("Describe this photo in one sentence."), image("cheeseburger.jpg")]
 )
-print(response)
+print(resp)
+
+# Anthropic (Claude)
+resp = prompt(
+    model="claude-sonnet-4-20250514",
+    content=[text("Caption this."), image("cheeseburger.jpg")]
+)
+print(resp)
 ```
 
-### Using Anthropic
+You can also combine plain text and images via the `images` convenience parameter:
 
 ```python
 from zenllm import prompt
 
-response = prompt(
-    "Tell me a three sentence bedtime story about a unicorn.",
-    model="claude-sonnet-4-20250514"
+resp = prompt(
+    "What’s in the picture?",
+    model="gemini-2.5-pro",
+    images=["cheeseburger.jpg"]   # path, bytes, file-like, or URL
 )
-print(response)
+print(resp)
 ```
 
-### Using TogetherAI
-
-To use models from TogetherAI, prefix the model name with `together/`.
+### Role-aware Messages
 
 ```python
-from zenllm import prompt
+from zenllm import prompt, text, image
 
-response = prompt(
-    "What are the top 3 things to do in New York?",
-    model="together/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"
+resp = prompt(
+    model="gemini-2.5-pro",
+    messages=[
+        {"role": "system", "content": [text("Be concise.")]},
+        {"role": "user", "content": [
+            text("Compare these."),
+            image("dash-q1.png"),
+            image("dash-q2.png"),
+        ]},
+    ],
 )
-print(response)
+print(resp)
 ```
 
 ### Streaming Responses
@@ -96,15 +120,12 @@ for chunk in response_stream:
 
 ### Using OpenAI-Compatible APIs
 
-You can use `zenllm` with any OpenAI-compatible API endpoint, such as local models (e.g., via Ollama, LM Studio) or other custom services. This is done by providing a `base_url`. `zenllm` will automatically append `/chat/completions` to this URL.
-
-By providing the `base_url` parameter, `zenllm` will automatically use the OpenAI provider, allowing you to use any model name served by that endpoint. You can also provide a custom `api_key` if required.
+You can use `zenllm` with any OpenAI-compatible API endpoint, such as local models (e.g., via Ollama, LM Studio) or other custom services. Provide a `base_url`. `zenllm` will automatically append `/chat/completions` to this URL.
 
 ```python
 from zenllm import prompt
 
 # Example with a local model endpoint (no API key needed)
-# The model name 'qwen3:30b' does not need a 'gpt-' prefix.
 response = prompt(
     "Why is the sky blue?",
     model="qwen3:30b", 
@@ -134,16 +155,18 @@ for chunk in stream:
 
 ## ✅ Supported Providers
 
-| Provider  | Environment Variable  | Model Prefix | Example Models                                       |
-| :-------- | :-------------------- | :----------- | :--------------------------------------------------- |
-| Anthropic | `ANTHROPIC_API_KEY`   | `claude`     | `claude-sonnet-4-20250514`, `claude-opus-4-20250514` |
-| Deepseek  | `DEEPSEEK_API_KEY`    | `deepseek`   | `deepseek-chat`, `deepseek-reasoner`                 |
-| Google    | `GEMINI_API_KEY`      | `gemini`     | `gemini-2.5-pro`, `gemini-2.5-flash`                 |
-| OpenAI    | `OPENAI_API_KEY`      | `gpt`        | `gpt-4.1`                                            |
-| TogetherAI| `TOGETHER_API_KEY`    | `together`   | `together/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo` |
+| Provider   | Env Var             | Prefix     | Notes                                           | Example Models                                       |
+| ---------- | ------------------- | ---------- | ----------------------------------------------- | ---------------------------------------------------- |
+| Anthropic  | `ANTHROPIC_API_KEY` | `claude`   | Text + Images (inline base64)                   | `claude-sonnet-4-20250514`, `claude-opus-4-20250514` |
+| DeepSeek   | `DEEPSEEK_API_KEY`  | `deepseek` | OpenAI-compatible; image support may vary       | `deepseek-chat`, `deepseek-reasoner`                 |
+| Google     | `GEMINI_API_KEY`    | `gemini`   | Text + Images (inline_data base64)              | `gemini-2.5-pro`, `gemini-2.5-flash`                 |
+| OpenAI     | `OPENAI_API_KEY`    | `gpt`      | Text + Images (`image_url`, supports data URLs) | `gpt-4.1`, `gpt-4o`                                  |
+| TogetherAI | `TOGETHER_API_KEY`  | `together` | OpenAI-compatible; image support may vary       | `together/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo` |
 
-*Note: For OpenAI-compatible endpoints (like local models), provide the `base_url` parameter. This will route the request correctly, regardless of the model name's prefix.*
+Note:
+- For OpenAI-compatible endpoints (like local models), provide the `base_url` parameter. This will route the request correctly, regardless of the model name's prefix.
+- Some third-party or OSS endpoints may not support vision. If you pass images to an unsupported model, the provider may return an error.
 
 ## 📜 License
 
-MIT License - Copyright (c) 2025 Koen van Eijk
+MIT License — Copyright (c) 2025 Koen van Eijk

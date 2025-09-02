@@ -1,5 +1,9 @@
 import os
 import json
+import base64
+import mimetypes
+from typing import Any, Dict, List, Optional, Tuple
+
 import requests
 from .base import LLMProvider
 
@@ -37,6 +41,56 @@ class DeepseekProvider(LLMProvider):
                     except json.JSONDecodeError:
                         continue
 
+    # OpenAI-compatible schema; transform if we see parts list
+    def _read_image_to_base64(self, part: Dict[str, Any]) -> Tuple[str, str]:
+        source = part.get("source", {})
+        kind = source.get("kind")
+        value = source.get("value")
+        mime = part.get("mime")
+
+        data: Optional[bytes] = None
+        if kind == "bytes":
+            data = value if isinstance(value, (bytes, bytearray)) else bytes(value)
+        elif kind == "file":
+            data = value.read()
+        elif kind == "path":
+            if not mime and isinstance(value, str):
+                mime = mimetypes.guess_type(value)[0] or "image/jpeg"
+            with open(value, "rb") as f:
+                data = f.read()
+        else:
+            # For DeepSeek, we will not fetch external URLs automatically
+            # They likely do not support vision; let API error if unsupported
+            raise ValueError("DeepSeek provider does not support image URLs; use path/bytes/file.")
+        if not mime:
+            mime = "image/jpeg"
+        b64 = base64.b64encode(data).decode("utf-8")
+        return mime, b64
+
+    def _to_openai_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        out: List[Dict[str, Any]] = []
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content")
+            if isinstance(content, list):
+                parts: List[Dict[str, Any]] = []
+                for p in content:
+                    if p.get("type") == "text":
+                        parts.append({"type": "text", "text": p.get("text", "")})
+                    elif p.get("type") == "image":
+                        source = p.get("source", {})
+                        if source.get("kind") == "url":
+                            raise ValueError("DeepSeek does not support URL images. Use path/bytes/file.")
+                        mime, b64 = self._read_image_to_base64(p)
+                        data_url = f"data:{mime};base64,{b64}"
+                        parts.append({"type": "image_url", "image_url": {"url": data_url}})
+                    else:
+                        continue
+                out.append({"role": role, "content": parts})
+            else:
+                out.append({"role": role, "content": content})
+        return out
+
     def call(self, model, messages, system_prompt=None, stream=False, **kwargs):
         api_key = self._check_api_key()
         
@@ -45,14 +99,14 @@ class DeepseekProvider(LLMProvider):
             "Content-Type": "application/json"
         }
 
-        all_messages = []
+        final_messages: List[Dict[str, Any]] = []
         if system_prompt:
-            all_messages.append({"role": "system", "content": system_prompt})
-        all_messages.extend(messages)
+            final_messages.append({"role": "system", "content": system_prompt})
+        final_messages.extend(self._to_openai_messages(messages))
 
         payload = {
             "model": model or self.DEFAULT_MODEL,
-            "messages": all_messages,
+            "messages": final_messages,
             "stream": stream,
         }
         
