@@ -31,7 +31,21 @@ class GoogleProvider(LLMProvider):
                     try:
                         json_str = decoded_line[len('data: '):]
                         data = json.loads(json_str)
-                        yield data['candidates'][0]['content']['parts'][0]['text']
+                        # Emit text deltas as they come; image parts typically arrive complete
+                        parts = data.get('candidates', [{}])[0].get('content', {}).get('parts', [])
+                        for p in parts:
+                            if 'text' in p:
+                                yield {"type": "text", "text": p.get("text", "")}
+                            elif 'inline_data' in p:
+                                inline = p.get('inline_data', {})
+                                mime = inline.get('mime_type') or 'image/png'
+                                b64 = inline.get('data', '')
+                                try:
+                                    raw = base64.b64decode(b64) if b64 else b""
+                                except Exception:
+                                    raw = b""
+                                if raw:
+                                    yield {"type": "image", "bytes": raw, "mime": mime}
                     except (json.JSONDecodeError, KeyError, IndexError):
                         continue
         return _stream_generator()
@@ -86,6 +100,23 @@ class GoogleProvider(LLMProvider):
                 continue
         return parts
 
+    def _from_gemini_response_parts(self, parts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        norm: List[Dict[str, Any]] = []
+        for p in parts:
+            if "text" in p:
+                norm.append({"type": "text", "text": p.get("text", "")})
+            elif "inline_data" in p:
+                inline = p.get("inline_data", {})
+                mime = inline.get("mime_type") or "image/png"
+                data_b64 = inline.get("data", "")
+                try:
+                    raw = base64.b64decode(data_b64) if data_b64 else b""
+                except Exception:
+                    raw = b""
+                if raw:
+                    norm.append({"type": "image", "source": {"kind": "bytes", "value": raw}, "mime": mime})
+        return norm
+
     def call(self, model, messages, system_prompt=None, stream=False, **kwargs):
         api_key = self._check_api_key()
 
@@ -112,9 +143,21 @@ class GoogleProvider(LLMProvider):
 
         # generationConfig options
         generation_config = {}
-        for key in ["temperature", "topP", "topK", "maxOutputTokens"]:
-            if key in kwargs:
-                generation_config[key] = kwargs.pop(key)
+        # Map common names (temperature, top_p, top_k, max_tokens) to Gemini (temperature, topP, topK, maxOutputTokens)
+        if "temperature" in kwargs:
+            generation_config["temperature"] = kwargs.pop("temperature")
+        if "top_p" in kwargs:
+            generation_config["topP"] = kwargs.pop("top_p")
+        if "topP" in kwargs:
+            generation_config["topP"] = kwargs.pop("topP")
+        if "top_k" in kwargs:
+            generation_config["topK"] = kwargs.pop("top_k")
+        if "topK" in kwargs:
+            generation_config["topK"] = kwargs.pop("topK")
+        if "max_tokens" in kwargs:
+            generation_config["maxOutputTokens"] = kwargs.pop("max_tokens")
+        if "maxOutputTokens" in kwargs:
+            generation_config["maxOutputTokens"] = kwargs.pop("maxOutputTokens")
         if generation_config:
             payload["generationConfig"] = generation_config
 
@@ -134,5 +177,15 @@ class GoogleProvider(LLMProvider):
         if stream:
             return self._stream_response(response)
 
-        response_data = response.json()
-        return response_data['candidates'][0]['content']['parts'][0]['text']
+        data = response.json()
+        candidate = (data.get('candidates') or [{}])[0]
+        finish_reason = candidate.get('finishReason')
+        content = candidate.get('content') or {}
+        parts = content.get('parts') or []
+        norm_parts = self._from_gemini_response_parts(parts)
+        return {
+            "parts": norm_parts,
+            "raw": data,
+            "finish_reason": finish_reason,
+            "usage": data.get("usageMetadata"),
+        }

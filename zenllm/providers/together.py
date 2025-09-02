@@ -22,20 +22,22 @@ class TogetherProvider(LLMProvider):
 
     def _stream_response(self, response):
         for line in response.iter_lines():
-            if line:
-                decoded_line = line.decode('utf-8')
-                if decoded_line.startswith('data: '):
-                    content = decoded_line[len('data: '):]
-                    if content.strip() == '[DONE]':
-                        break
-                    try:
-                        data = json.loads(content)
-                        if 'choices' in data and data['choices']:
-                            delta = data['choices'][0].get('delta', {})
-                            if 'content' in delta and delta['content'] is not None:
-                                yield delta['content']
-                    except (json.JSONDecodeError, KeyError):
-                        continue
+            if not line:
+                continue
+            decoded_line = line.decode('utf-8')
+            if decoded_line.startswith('data: '):
+                content = decoded_line[len('data: '):]
+                if content.strip() == '[DONE]':
+                    break
+                try:
+                    data = json.loads(content)
+                    if 'choices' in data and data['choices']:
+                        delta = data['choices'][0].get('delta', {})
+                        txt = delta.get('content')
+                        if txt is not None:
+                            yield {"type": "text", "text": txt}
+                except (json.JSONDecodeError, KeyError):
+                    continue
 
     def _read_image_to_base64(self, part: Dict[str, Any]) -> Tuple[str, str]:
         source = part.get("source", {})
@@ -118,5 +120,15 @@ class TogetherProvider(LLMProvider):
         if stream:
             return self._stream_response(response)
         
-        response_data = response.json()
-        return response_data['choices'][0]['message']['content']
+        data = response.json()
+        choice = (data.get('choices') or [{}])[0]
+        msg = choice.get('message', {})
+        text = msg.get('content', "") or ""
+        finish_reason = choice.get('finish_reason')
+        parts = [{"type": "text", "text": text}] if text else []
+        return {
+            "parts": parts,
+            "raw": data,
+            "finish_reason": finish_reason,
+            "usage": data.get("usage"),
+        }

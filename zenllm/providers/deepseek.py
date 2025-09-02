@@ -23,23 +23,24 @@ class DeepseekProvider(LLMProvider):
 
     def _stream_response(self, response):
         for line in response.iter_lines():
-            if line:
-                decoded_line = line.decode('utf-8')
-                if decoded_line.startswith('data: '):
-                    json_str = decoded_line[len('data: '):].strip()
-                    if json_str == '[DONE]':
-                        break
-                    if not json_str:
-                        continue
-                    try:
-                        data = json.loads(json_str)
-                        if 'choices' in data and data['choices']:
-                            delta = data['choices'][0].get('delta', {})
-                            content = delta.get('content')
-                            if content:
-                                yield content
-                    except json.JSONDecodeError:
-                        continue
+            if not line:
+                continue
+            decoded_line = line.decode('utf-8')
+            if decoded_line.startswith('data: '):
+                json_str = decoded_line[len('data: '):].strip()
+                if json_str == '[DONE]':
+                    break
+                if not json_str:
+                    continue
+                try:
+                    data = json.loads(json_str)
+                    if 'choices' in data and data['choices']:
+                        delta = data['choices'][0].get('delta', {})
+                        content = delta.get('content')
+                        if content:
+                            yield {"type": "text", "text": content}
+                except json.JSONDecodeError:
+                    continue
 
     # OpenAI-compatible schema; transform if we see parts list
     def _read_image_to_base64(self, part: Dict[str, Any]) -> Tuple[str, str]:
@@ -118,5 +119,15 @@ class DeepseekProvider(LLMProvider):
         if stream:
             return self._stream_response(response)
         
-        response_data = response.json()
-        return response_data['choices'][0]['message']['content']
+        data = response.json()
+        choice = (data.get('choices') or [{}])[0]
+        msg = choice.get('message', {})
+        text = msg.get('content', "") or ""
+        finish_reason = choice.get('finish_reason')
+        parts = [{"type": "text", "text": text}] if text else []
+        return {
+            "parts": parts,
+            "raw": data,
+            "finish_reason": finish_reason,
+            "usage": data.get("usage"),
+        }

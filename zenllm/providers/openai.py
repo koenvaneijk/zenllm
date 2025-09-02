@@ -22,22 +22,24 @@ class OpenAIProvider(LLMProvider):
         return api_key
 
     def _stream_response(self, response):
-        """Handles streaming responses from an OpenAI-compatible API."""
+        """Handles streaming responses from an OpenAI-compatible API. Yields dict events."""
         for line in response.iter_lines():
-            if line:
-                decoded_line = line.decode('utf-8')
-                if decoded_line.startswith('data: '):
-                    json_str = decoded_line[6:].strip()
-                    if json_str == '[DONE]':
-                        break
-                    try:
-                        chunk = json.loads(json_str)
-                        delta = chunk.get('choices', [{}])[0].get('delta', {})
-                        content = delta.get('content')
-                        if content:
-                            yield content
-                    except (json.JSONDecodeError, IndexError):
-                        continue
+            if not line:
+                continue
+            decoded_line = line.decode('utf-8')
+            if decoded_line.startswith('data: '):
+                json_str = decoded_line[6:].strip()
+                if json_str == '[DONE]':
+                    break
+                try:
+                    chunk = json.loads(json_str)
+                    choice = chunk.get('choices', [{}])[0]
+                    delta = choice.get('delta', {})
+                    content = delta.get('content')
+                    if content:
+                        yield {"type": "text", "text": content}
+                except (json.JSONDecodeError, IndexError, KeyError):
+                    continue
 
     # ---- helpers to transform normalized parts to OpenAI schema ----
 
@@ -152,5 +154,13 @@ class OpenAIProvider(LLMProvider):
         if stream:
             return self._stream_response(response)
 
-        response_data = response.json()
-        return response_data['choices'][0]['message']['content']
+        data = response.json()
+        text = data.get('choices', [{}])[0].get('message', {}).get('content', "") or ""
+        finish_reason = data.get('choices', [{}])[0].get('finish_reason')
+        parts = [{"type": "text", "text": text}] if text else []
+        return {
+            "parts": parts,
+            "raw": data,
+            "finish_reason": finish_reason,
+            "usage": data.get("usage"),
+        }

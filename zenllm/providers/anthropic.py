@@ -23,15 +23,19 @@ class AnthropicProvider(LLMProvider):
 
     def _stream_response(self, response):
         for line in response.iter_lines():
-            if line:
-                decoded_line = line.decode('utf-8')
-                if decoded_line.startswith('data:'):
-                    try:
-                        data = json.loads(decoded_line[len('data: '):])
-                        if data.get('type') == 'content_block_delta':
-                            yield data['delta']['text']
-                    except (json.JSONDecodeError, KeyError):
-                        continue
+            if not line:
+                continue
+            decoded_line = line.decode('utf-8')
+            if decoded_line.startswith('data:'):
+                try:
+                    data = json.loads(decoded_line[len('data: '):])
+                    if data.get('type') == 'content_block_delta':
+                        delta = data.get('delta', {})
+                        txt = delta.get('text')
+                        if txt:
+                            yield {"type": "text", "text": txt}
+                except (json.JSONDecodeError, KeyError):
+                    continue
 
     # ---- helpers to transform normalized parts to Anthropic schema ----
 
@@ -91,7 +95,7 @@ class AnthropicProvider(LLMProvider):
                         continue
                 out.append({"role": role, "content": blocks})
             else:
-                # Backwards: plain string content becomes a single text block
+                # Fallback: plain string content becomes a single text block
                 out.append({"role": role, "content": [{"type": "text", "text": str(content)}]})
         return out
 
@@ -122,5 +126,15 @@ class AnthropicProvider(LLMProvider):
         if stream:
             return self._stream_response(response)
 
-        response_data = response.json()
-        return response_data['content'][0]['text']
+        data = response.json()
+        content_blocks = data.get('content') or []
+        parts: List[Dict[str, Any]] = []
+        for b in content_blocks:
+            if b.get("type") == "text":
+                parts.append({"type": "text", "text": b.get("text", "")})
+        return {
+            "parts": parts,
+            "raw": data,
+            "finish_reason": data.get("stop_reason"),
+            "usage": data.get("usage"),
+        }
