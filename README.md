@@ -25,6 +25,9 @@ pip install zenllm
 
 First, set your provider’s API key (e.g., `export OPENAI_API_KEY="your-key"`).
 
+You can also set a default model via environment:
+- export ZENLLM_DEFAULT_MODEL="gpt-4.1"
+
 ### Text-only
 
 ```python
@@ -93,8 +96,11 @@ for ev in stream:
         caption.append(ev.text)
         print(ev.text, end="", flush=True)
     elif ev.type == "image":
-        with open("out.png", "wb") as f:
-            f.write(ev.bytes)
+        if getattr(ev, "bytes", None):
+            with open("out.png", "wb") as f:
+                f.write(ev.bytes)
+        elif getattr(ev, "url", None):
+            print(f"\nImage available at: {ev.url}")
 final = stream.finalize()  # Response
 ```
 
@@ -142,6 +148,10 @@ Inputs:
 - options: normalized tuning and passthrough, e.g. {"temperature": 0.7, "max_tokens": 512}.
   These are mapped per provider where needed.
 
+Helpers (escape hatch):
+- zenllm.text(value) -> {"type":"text","text": "..."}
+- zenllm.image(source[, mime, detail]) -> {"type":"image","source":{"kind": "...","value": ...}, ...}
+
 Outputs:
 - Always a Response object with:
   - response.text: concatenated text
@@ -151,13 +161,18 @@ Outputs:
   - response.images: convenience filtered list
   - response.finish_reason, response.usage, response.raw
   - response.save_images(dir=".", prefix="img_")
-  - response.to_dict() for JSON-safe structure (bytes are base64)
+  - response.to_dict() for JSON-safe structure (bytes are base64, kind becomes "bytes_b64")
 
 Streaming:
 - Returns a ResponseStream. Iterate events:
   - Text events: ev.type == "text", ev.text
-  - Image events: ev.type == "image", ev.bytes, ev.mime
+  - Image events: ev.type == "image", either ev.bytes (with ev.mime) or ev.url
 - Call stream.finalize() to materialize a Response from the streamed events.
+
+Provider selection:
+- Automatic by model prefix: gpt, gemini, claude, deepseek, together
+- Override with provider="gpt"|"openai"|"openai-compatible"|"gemini"|"claude"|"deepseek"|"together"
+- OpenAI-compatible: pass base_url (and optional api_key) and we append /chat/completions
 
 ## ✅ Supported Providers
 
@@ -172,6 +187,41 @@ Streaming:
 Notes:
 - For OpenAI-compatible endpoints (like local models), pass `base_url` and optional `api_key`. We’ll route via the OpenAI-compatible provider and append `/chat/completions`.
 - Some third-party endpoints don’t support vision. If you pass images to an unsupported model, the upstream provider may return an error.
+- DeepSeek and Together may not accept image URLs; prefer path/bytes/file for images with those providers.
+
+## 🧪 Advanced examples
+
+Manual parts with helpers:
+```python
+from zenllm import text, image
+import zenllm as llm
+
+msgs = [
+  {"role": "user", "parts": [
+    text("Describe this in one sentence."),
+    image("cheeseburger.jpg", detail="high"),
+  ]},
+]
+resp = llm.chat(msgs, model="gemini-2.5-pro")
+print(resp.text)
+```
+
+Provider override:
+```python
+import zenllm as llm
+
+resp = llm.generate(
+  "Hello!",
+  model="gpt-4.1",
+  provider="openai",  # or "gpt", "openai-compatible", "gemini", "claude", "deepseek", "together"
+)
+print(resp.text)
+```
+
+Serialization:
+```python
+d = resp.to_dict()  # bytes are base64-encoded with kind "bytes_b64"
+```
 
 ## 📜 License
 
