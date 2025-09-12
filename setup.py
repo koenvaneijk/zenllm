@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="zenllm",
-    version="0.2.0",
+    version="0.2.2",
     author="Koen van Eijk",
     description="A zen, simple, and unified API to prompt LLMs from Anthropic, Google, OpenAI, and more, using only the requests library.",
     long_description=long_description,
