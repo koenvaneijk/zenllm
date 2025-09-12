@@ -273,7 +273,7 @@ class Response:
                 idx += 1
         return paths
 
-    def cost(self, *, prompt_chars: Optional[int] = None, completion_chars: Optional[int] = None) -> Dict[str, Any]:
+    def cost_breakdown(self, *, prompt_chars: Optional[int] = None, completion_chars: Optional[int] = None) -> Dict[str, Any]:
         """
         Return a cost breakdown dict for this response. Uses provider-reported usage when available.
         If prompt_chars/completion_chars are provided, they are used to approximate missing token counts.
@@ -292,15 +292,20 @@ class Response:
             self._cost_cache = result
         return result
 
-    def total_cost(self, *, prompt_chars: Optional[int] = None, completion_chars: Optional[int] = None) -> Optional[float]:
-        """Convenience accessor for the total USD cost."""
-        breakdown = self.cost(prompt_chars=prompt_chars, completion_chars=completion_chars)
+    def cost(self, *, prompt_chars: Optional[int] = None, completion_chars: Optional[int] = None) -> Optional[float]:
+        """
+        Return the total USD cost for this response (None if pricing unknown).
+        """
+        breakdown = self.cost_breakdown(prompt_chars=prompt_chars, completion_chars=completion_chars)
         return breakdown.get("total")
+
+    
+
 
     def to_dict(self) -> Dict[str, Any]:
         """
         JSON-safe representation: bytes become base64 strings.
-        Includes a 'cost' field computed from usage/pricing when possible.
+        Includes 'cost' (float) and 'cost_breakdown' computed from usage/pricing when possible.
         """
         def encode_part(part: Dict[str, Any]) -> Dict[str, Any]:
             if part.get("type") == "image":
@@ -319,7 +324,8 @@ class Response:
             "finish_reason": self.finish_reason,
             "usage": self.usage,
             "raw": self.raw,
-            "cost": self.cost(),  # computed lazily
+            "cost": self.cost(),  # float total or None
+            "cost_breakdown": self.cost_breakdown(),
         }
 
 class TextEvent:
