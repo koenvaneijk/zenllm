@@ -207,6 +207,8 @@ Outputs:
   - response.images: convenience filtered list
   - response.finish_reason, response.usage, response.raw
   - response.save_images(dir=".", prefix="img_")
+  - response.cost(prompt_chars=None, completion_chars=None): total USD cost (None if pricing unknown)
+  - response.cost_breakdown(prompt_chars=None, completion_chars=None): detailed dict of pricing inputs and totals
   - response.to_dict() for JSON-safe structure (bytes are base64, kind becomes "bytes_b64")
 
 Streaming:
