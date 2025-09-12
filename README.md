@@ -170,19 +170,20 @@ Streaming:
 - Call stream.finalize() to materialize a Response from the streamed events.
 
 Provider selection:
-- Automatic by model prefix: gpt, gemini, claude, deepseek, together
-- Override with provider="gpt"|"openai"|"openai-compatible"|"gemini"|"claude"|"deepseek"|"together"
+- Automatic by model prefix: gpt, gemini, claude, deepseek, together, xai, grok
+- Override with provider="gpt"|"openai"|"openai-compatible"|"gemini"|"claude"|"deepseek"|"together"|"xai"
 - OpenAI-compatible: pass base_url (and optional api_key) and we append /chat/completions
 
 ## ✅ Supported Providers
 
-| Provider   | Env Var             | Prefix     | Notes                                           | Example Models                                       |
-| ---------- | ------------------- | ---------- | ----------------------------------------------- | ---------------------------------------------------- |
-| Anthropic  | `ANTHROPIC_API_KEY` | `claude`   | Text + Images (input via base64)                | `claude-sonnet-4-20250514`, `claude-opus-4-20250514` |
-| DeepSeek   | `DEEPSEEK_API_KEY`  | `deepseek` | OpenAI-compatible; image support may vary       | `deepseek-chat`, `deepseek-reasoner`                 |
-| Google     | `GEMINI_API_KEY`    | `gemini`   | Text + Images (inline_data base64)              | `gemini-2.5-pro`, `gemini-2.5-flash`                 |
-| OpenAI     | `OPENAI_API_KEY`    | `gpt`      | Text + Images (`image_url`, supports data URLs) | `gpt-4.1`, `gpt-4o`                                  |
-| TogetherAI | `TOGETHER_API_KEY`  | `together` | OpenAI-compatible; image support may vary       | `together/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo` |
+| Provider   | Env Var             | Prefix       | Notes                                           | Example Models                                       |
+| ---------- | ------------------- | ------------ | ----------------------------------------------- | ---------------------------------------------------- |
+| Anthropic  | `ANTHROPIC_API_KEY` | `claude`     | Text + Images (input via base64)                | `claude-sonnet-4-20250514`, `claude-opus-4-20250514` |
+| DeepSeek   | `DEEPSEEK_API_KEY`  | `deepseek`   | OpenAI-compatible; image support may vary       | `deepseek-chat`, `deepseek-reasoner`                 |
+| Google     | `GEMINI_API_KEY`    | `gemini`     | Text + Images (inline_data base64)              | `gemini-2.5-pro`, `gemini-2.5-flash`                 |
+| OpenAI     | `OPENAI_API_KEY`    | `gpt`        | Text + Images (`image_url`, supports data URLs) | `gpt-4.1`, `gpt-4o`                                  |
+| TogetherAI | `TOGETHER_API_KEY`  | `together`   | OpenAI-compatible; image support may vary       | `together/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo` |
+| X.ai       | `XAI_API_KEY`       | `xai`, `grok` | OpenAI-compatible; image support may vary       | `grok-code-fast-1`                                   |
 
 Notes:
 - For OpenAI-compatible endpoints (like local models), pass `base_url` and optional `api_key`. We’ll route via the OpenAI-compatible provider and append `/chat/completions`.
