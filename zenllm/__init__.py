@@ -1,6 +1,9 @@
 import os
 import warnings
 import base64
+import time
+import random
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Union, Iterable, Iterator
 
 from .providers.anthropic import AnthropicProvider
@@ -58,6 +61,124 @@ def _get_provider(model_name: Optional[str], provider: Optional[str] = None, **k
 
 # Default model (can be overridden by env)
 DEFAULT_MODEL = os.getenv("ZENLLM_DEFAULT_MODEL", "gpt-4.1")
+
+# ---- Fallback configuration ----
+
+@dataclass
+class ProviderChoice:
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+    options: Optional[Dict[str, Any]] = None
+
+@dataclass
+class RetryPolicy:
+    max_attempts: int = 1
+    initial_backoff: float = 0.5
+    max_backoff: float = 4.0
+    timeout: Optional[float] = None  # placeholder; some providers may accept request timeouts via options
+
+@dataclass
+class FallbackConfig:
+    chain: List[ProviderChoice]
+    retry: RetryPolicy = field(default_factory=RetryPolicy)
+    allow_mid_stream_switch: bool = False
+    # Status codes considered non-retryable (if provided by providers)
+    non_retryable_statuses: Optional[List[int]] = None
+    # Additional retryable statuses (beyond defaults)
+    retryable_statuses: Optional[List[int]] = None
+
+def _env_default_fallback() -> Optional["FallbackConfig"]:
+    """
+    Parse ZENLLM_FALLBACK="provider:model,provider:model,..." into a FallbackConfig.
+    """
+    spec = os.getenv("ZENLLM_FALLBACK")
+    if not spec:
+        return None
+    chain: List[ProviderChoice] = []
+    for item in spec.split(","):
+        tok = item.strip()
+        if not tok:
+            continue
+        prov = None
+        model = None
+        if ":" in tok:
+            prov, model = tok.split(":", 1)
+            prov = (prov or None)
+            model = (model or None)
+        else:
+            # If only one token provided, assume it's a model or provider; we'll infer later
+            if tok in _PROVIDERS or tok in ("openai", "gpt", "openai-compatible"):
+                prov = tok
+            else:
+                model = tok
+        chain.append(ProviderChoice(provider=prov, model=model))
+    if not chain:
+        return None
+    return FallbackConfig(chain=chain)
+
+def _status_from_exception(exc: Exception) -> Optional[int]:
+    """
+    Try to extract an HTTP-like status code from a provider exception.
+    """
+    # Common patterns: exc.status_code, exc.status, exc.response.status_code
+    for attr in ("status_code", "status"):
+        v = getattr(exc, attr, None)
+        if isinstance(v, int):
+            return v
+    resp = getattr(exc, "response", None)
+    if resp is not None:
+        for attr in ("status_code", "status"):
+            v = getattr(resp, attr, None)
+            if isinstance(v, int):
+                return v
+    return None
+
+def _is_retryable(exc: Exception, status: Optional[int], cfg: FallbackConfig) -> bool:
+    default_non_retryable = {400, 401, 403, 404, 422}
+    default_retryable = {408, 429}
+    default_retryable.update({s for s in range(500, 600)})
+
+    if cfg.non_retryable_statuses is not None:
+        non_retryable = set(cfg.non_retryable_statuses)
+    else:
+        non_retryable = default_non_retryable
+    retryable = set(default_retryable)
+    if cfg.retryable_statuses is not None:
+        retryable.update(cfg.retryable_statuses)
+
+    if status is not None:
+        if status in non_retryable:
+            return False
+        if status in retryable:
+            return True
+        # Unknown status: be conservative and retry on 5xx-like statuses already handled above
+        return False
+
+    # No status: consider network/timeouts retryable; fall back to type checks
+    # Avoid retrying on clear client-side errors like ValueError/TypeError
+    if isinstance(exc, (ValueError, TypeError)):
+        return False
+    # Otherwise assume retryable (connection reset, timeouts, etc.)
+    return True
+
+def _backoff_sleep(attempt_index: int, retry: RetryPolicy):
+    # attempt_index is 0-based for backoff computation
+    base = min(retry.max_backoff, retry.initial_backoff * (2 ** attempt_index))
+    # Full jitter
+    time.sleep(random.uniform(0, base))
+
+def _merge_options(global_opts: Optional[Dict[str, Any]], choice_opts: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    merged: Dict[str, Any] = {}
+    if global_opts:
+        merged.update(global_opts)
+    if choice_opts:
+        merged.update(choice_opts)
+    return merged
+
+def _prov_name(prov_obj) -> str:
+    return prov_obj.__class__.__name__.replace("Provider", "").lower()
 
 # ---- Public helpers (escape hatch for advanced parts) ----
 
@@ -214,10 +335,11 @@ class ImageEvent:
         self.url = url
 
 class ResponseStream:
-    def __init__(self, iterator: Iterable, *, model: Optional[str] = None, provider: Optional[str] = None):
+    def __init__(self, iterator: Iterable, *, model: Optional[str] = None, provider: Optional[str] = None, raw: Optional[Dict[str, Any]] = None):
         self._it = iter(iterator)
         self._model = model
         self._provider = provider
+        self._raw = raw
         self._buffer_text: List[str] = []
         self._image_parts: List[Dict[str, Any]] = []
 
@@ -259,7 +381,7 @@ class ResponseStream:
         if text_joined:
             parts.append({"type": "text", "text": text_joined})
         parts.extend(self._image_parts)
-        return Response(parts, model=self._model, provider=self._provider)
+        return Response(parts, model=self._model, provider=self._provider, raw=self._raw)
 
 # ---- Input normalization helpers ----
 
@@ -312,6 +434,190 @@ def _normalize_messages_for_chat(messages: List[Any]) -> List[Dict[str, Any]]:
         raise ValueError("Unsupported message format.")
     return out
 
+# ---- Fallback runner ----
+
+def _run_with_fallback(
+    *,
+    msgs: List[Dict[str, Any]],
+    default_model: str,
+    system: Optional[str],
+    stream: bool,
+    options: Optional[Dict[str, Any]],
+    fallback: FallbackConfig,
+    default_provider: Optional[str],
+    default_base_url: Optional[str],
+    default_api_key: Optional[str],
+):
+    attempts_log: List[Dict[str, Any]] = []
+
+    def choice_kwargs(choice: ProviderChoice) -> Dict[str, Any]:
+        kw: Dict[str, Any] = {}
+        # Merge options (global < choice)
+        kw.update(_merge_options(options, choice.options))
+        # Base URL / API key precedence: choice overrides call-level
+        if choice.base_url or default_base_url:
+            kw["base_url"] = choice.base_url or default_base_url
+        if choice.api_key or default_api_key:
+            kw["api_key"] = choice.api_key or default_api_key
+        return kw
+
+    # Non-stream path
+    if not stream:
+        for choice in fallback.chain:
+            model = choice.model or default_model
+            kw = choice_kwargs(choice)
+            prov = _get_provider(model, provider=choice.provider or default_provider, **kw)
+            prov_name = _prov_name(prov)
+
+            for attempt in range(1, (fallback.retry.max_attempts or 1) + 1):
+                try:
+                    result = prov.call(model=model, messages=msgs, system_prompt=system, stream=False, **kw)
+                    parts = result.get("parts") or []
+                    raw_meta = {
+                        "fallback": {
+                            "selected_provider": prov_name,
+                            "selected_model": model,
+                            "attempts": attempts_log,
+                        },
+                        "provider_raw": result.get("raw"),
+                    }
+                    return Response(
+                        parts,
+                        model=model,
+                        provider=prov_name,
+                        finish_reason=result.get("finish_reason"),
+                        usage=result.get("usage"),
+                        raw=raw_meta,
+                    )
+                except Exception as e:
+                    status = _status_from_exception(e)
+                    retryable = _is_retryable(e, status, fallback)
+                    attempts_log.append({
+                        "provider": prov_name,
+                        "model": model,
+                        "attempt": attempt,
+                        "status": status,
+                        "retryable": retryable,
+                        "error": str(e),
+                    })
+                    # Stop retrying this provider if not retryable or out of attempts
+                    if not retryable or attempt >= (fallback.retry.max_attempts or 1):
+                        break
+                    _backoff_sleep(attempt - 1, fallback.retry)
+            # move to next provider
+        # Exhausted all providers
+        raise RuntimeError(f"All providers failed. Attempts: {attempts_log}")
+
+    # Stream path
+    if not fallback.allow_mid_stream_switch:
+        # Lock in provider after first event arrives
+        for choice in fallback.chain:
+            model = choice.model or default_model
+            kw = choice_kwargs(choice)
+            prov = _get_provider(model, provider=choice.provider or default_provider, **kw)
+            prov_name = _prov_name(prov)
+
+            for attempt in range(1, (fallback.retry.max_attempts or 1) + 1):
+                try:
+                    iterator = prov.call(model=model, messages=msgs, system_prompt=system, stream=True, **kw)
+                    it = iter(iterator)
+                    # Prefetch first event to ensure provider is viable
+                    try:
+                        first = next(it)
+                        # Build generator that replays first then continues
+                        def gen():
+                            yield first
+                            for ev in it:
+                                yield ev
+                        raw_meta = {
+                            "fallback": {
+                                "selected_provider": prov_name,
+                                "selected_model": model,
+                                "attempts": attempts_log,
+                            }
+                        }
+                        return ResponseStream(gen(), model=model, provider=prov_name, raw=raw_meta)
+                    except StopIteration:
+                        # Empty stream; treat as success with empty content
+                        def gen_empty():
+                            if False:
+                                yield None
+                        raw_meta = {
+                            "fallback": {
+                                "selected_provider": prov_name,
+                                "selected_model": model,
+                                "attempts": attempts_log,
+                            }
+                        }
+                        return ResponseStream(gen_empty(), model=model, provider=prov_name, raw=raw_meta)
+                    except Exception as iter_exc:
+                        status = _status_from_exception(iter_exc)
+                        retryable = _is_retryable(iter_exc, status, fallback)
+                        attempts_log.append({
+                            "provider": prov_name,
+                            "model": model,
+                            "attempt": attempt,
+                            "status": status,
+                            "retryable": retryable,
+                            "error": str(iter_exc),
+                        })
+                        if not retryable or attempt >= (fallback.retry.max_attempts or 1):
+                            break
+                        _backoff_sleep(attempt - 1, fallback.retry)
+                        continue
+                except Exception as e:
+                    status = _status_from_exception(e)
+                    retryable = _is_retryable(e, status, fallback)
+                    attempts_log.append({
+                        "provider": prov_name,
+                        "model": model,
+                        "attempt": attempt,
+                        "status": status,
+                        "retryable": retryable,
+                        "error": str(e),
+                    })
+                    if not retryable or attempt >= (fallback.retry.max_attempts or 1):
+                        break
+                    _backoff_sleep(attempt - 1, fallback.retry)
+                    continue
+        raise RuntimeError(f"All providers failed (stream preflight). Attempts: {attempts_log}")
+
+    # Advanced: allow mid-stream switch (restart on next provider if failure mid-stream)
+    # Note: This is simplistic: we do not splice streams; we restart from scratch on next provider.
+    def switching_stream():
+        for choice in fallback.chain:
+            model = choice.model or default_model
+            kw = choice_kwargs(choice)
+            prov = _get_provider(model, provider=choice.provider or default_provider, **kw)
+            prov_name = _prov_name(prov)
+            for attempt in range(1, (fallback.retry.max_attempts or 1) + 1):
+                try:
+                    iterator = prov.call(model=model, messages=msgs, system_prompt=system, stream=True, **kw)
+                    for ev in iterator:
+                        yield ev
+                    # Completed successfully
+                    return
+                except Exception as e:
+                    status = _status_from_exception(e)
+                    retryable = _is_retryable(e, status, fallback)
+                    attempts_log.append({
+                        "provider": prov_name,
+                        "model": model,
+                        "attempt": attempt,
+                        "status": status,
+                        "retryable": retryable,
+                        "error": str(e),
+                    })
+                    if not retryable or attempt >= (fallback.retry.max_attempts or 1):
+                        break
+                    _backoff_sleep(attempt - 1, fallback.retry)
+                    continue
+        # If exhausted all, end iteration (consumer finalize will see partial)
+        return
+
+    raw_meta = {"fallback": {"selected_provider": None, "selected_model": None, "attempts": attempts_log}}
+    return ResponseStream(switching_stream(), model=default_model, provider=None, raw=raw_meta)
+
 # ---- Public API ----
 
 def generate(
@@ -326,6 +632,7 @@ def generate(
     provider: Optional[str] = None,
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
+    fallback: Optional[FallbackConfig] = None,
 ):
     """
     Single-turn generation with ergonomic inputs. Always returns a Response or ResponseStream.
@@ -338,6 +645,21 @@ def generate(
     msg = _message_from_simple("user", prompt, images if images is not None else image)
     msgs = [msg]
 
+    # If fallback provided or env default exists, use fallback runner
+    fb = fallback or _env_default_fallback()
+    if fb:
+        return _run_with_fallback(
+            msgs=msgs,
+            default_model=model,
+            system=system,
+            stream=stream,
+            options=options,
+            fallback=fb,
+            default_provider=provider,
+            default_base_url=base_url,
+            default_api_key=api_key,
+        )
+
     # Prepare kwargs/options passthrough
     kwargs: Dict[str, Any] = {}
     if options:
@@ -348,7 +670,7 @@ def generate(
         kwargs["api_key"] = api_key
 
     prov = _get_provider(model, provider=provider, **kwargs)
-    prov_name = prov.__class__.__name__.replace("Provider", "").lower()
+    prov_name = _prov_name(prov)
 
     if stream:
         iterator = prov.call(model=model, messages=msgs, system_prompt=system, stream=True, **kwargs)
@@ -376,6 +698,7 @@ def chat(
     provider: Optional[str] = None,
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
+    fallback: Optional[FallbackConfig] = None,
 ):
     """
     Multi-turn chat with ergonomic shorthands.
@@ -387,6 +710,20 @@ def chat(
     """
     msgs = _normalize_messages_for_chat(messages)
 
+    fb = fallback or _env_default_fallback()
+    if fb:
+        return _run_with_fallback(
+            msgs=msgs,
+            default_model=model,
+            system=system,
+            stream=stream,
+            options=options,
+            fallback=fb,
+            default_provider=provider,
+            default_base_url=base_url,
+            default_api_key=api_key,
+        )
+
     kwargs: Dict[str, Any] = {}
     if options:
         kwargs.update(options)
@@ -396,7 +733,7 @@ def chat(
         kwargs["api_key"] = api_key
 
     prov = _get_provider(model, provider=provider, **kwargs)
-    prov_name = prov.__class__.__name__.replace("Provider", "").lower()
+    prov_name = _prov_name(prov)
 
     if stream:
         iterator = prov.call(model=model, messages=msgs, system_prompt=system, stream=True, **kwargs)

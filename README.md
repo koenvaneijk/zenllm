@@ -131,10 +131,56 @@ for ev in stream:
         print(ev.text, end="", flush=True)
 ```
 
+## 🔁 Fallback chains (automatic provider failover)
+
+You can define an ordered chain of providers and models. ZenLLM will try them in order and move on when a provider is down, rate-limiting, or times out. By default, we do not switch mid-stream once tokens start.
+
+Example:
+```python
+import zenllm as llm
+from zenllm import FallbackConfig, ProviderChoice, RetryPolicy
+
+cfg = FallbackConfig(
+    chain=[
+        ProviderChoice(provider="openai",   model="gpt-4o-mini"),
+        ProviderChoice(provider="xai",      model="grok-2-mini"),
+        ProviderChoice(provider="together", model="meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"),
+    ],
+    retry=RetryPolicy(max_attempts=2, initial_backoff=0.5, max_backoff=4.0, timeout=30),
+    allow_mid_stream_switch=False,  # recommended
+)
+
+# Single-turn
+resp = llm.generate("Explain CRDTs vs OT.", fallback=cfg, options={"temperature": 0.2})
+print(resp.text)
+
+# Multi-turn
+resp = llm.chat([("user", "Help me debug this error…")], fallback=cfg)
+print(resp.text)
+
+# Streaming (we only lock in a provider after the first event arrives)
+stream = llm.generate("Tell me a haiku about dataclasses.", stream=True, fallback=cfg)
+for ev in stream:
+    if ev.type == "text":
+        print(ev.text, end="")
+final = stream.finalize()
+```
+
+Environment default:
+- You can set a default fallback chain via `ZENLLM_FALLBACK`. Format: `provider:model,provider:model,...`
+  Example:
+  - `export ZENLLM_FALLBACK="openai:gpt-4o-mini,xai:grok-2-mini,together:meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"`
+- When `fallback` is not provided to `generate/chat`, ZenLLM will use the env chain if present.
+
+Notes:
+- Per-provider overrides go in `ProviderChoice(..., options={...})`. They override call-level `options`.
+- If a provider reports 400/401/403/404/422 errors, we do not retry and we move to the next provider.
+- Retryable errors include 408/429/5xx and network timeouts. Exponential backoff with jitter is used.
+
 ## 🧱 API overview
 
-- generate(prompt=None, *, model=..., system=None, image=None, images=None, stream=False, options=None, provider=None, base_url=None, api_key=None)
-- chat(messages, *, model=..., system=None, stream=False, options=None, provider=None, base_url=None, api_key=None)
+- generate(prompt=None, *, model=..., system=None, image=None, images=None, stream=False, options=None, provider=None, base_url=None, api_key=None, fallback=None)
+- chat(messages, *, model=..., system=None, stream=False, options=None, provider=None, base_url=None, api_key=None, fallback=None)
 
 Inputs:
 - prompt: str
@@ -173,6 +219,7 @@ Provider selection:
 - Automatic by model prefix: gpt, gemini, claude, deepseek, together, xai, grok
 - Override with provider="gpt"|"openai"|"openai-compatible"|"gemini"|"claude"|"deepseek"|"together"|"xai"
 - OpenAI-compatible: pass base_url (and optional api_key) and we append /chat/completions
+- Fallback chains: pass fallback=FallbackConfig(...) or set env ZENLLM_FALLBACK="provider:model,provider:model,..."
 
 ## ✅ Supported Providers
 
