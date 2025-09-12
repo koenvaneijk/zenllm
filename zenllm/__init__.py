@@ -8,6 +8,7 @@ from .providers.google import GoogleProvider
 from .providers.openai import OpenAIProvider
 from .providers.deepseek import DeepseekProvider
 from .providers.together import TogetherProvider
+from .providers.xai import XaiProvider
 
 # ---- Providers registry and selection ----
 
@@ -17,6 +18,8 @@ _PROVIDERS = {
     "gpt": OpenAIProvider(),
     "deepseek": DeepseekProvider(),
     "together": TogetherProvider(),
+    "xai": XaiProvider(),
+    "grok": XaiProvider(),
 }
 
 def _get_provider(model_name: Optional[str], provider: Optional[str] = None, **kwargs):
