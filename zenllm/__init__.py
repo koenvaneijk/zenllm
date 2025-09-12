@@ -9,6 +9,7 @@ from .providers.openai import OpenAIProvider
 from .providers.deepseek import DeepseekProvider
 from .providers.together import TogetherProvider
 from .providers.xai import XaiProvider
+from .pricing import estimate_cost as _estimate_cost
 
 # ---- Providers registry and selection ----
 
@@ -124,6 +125,7 @@ class Response:
         self.finish_reason = finish_reason
         self.usage = usage
         self.raw = raw
+        self._cost_cache: Optional[Dict[str, Any]] = None
 
     @property
     def text(self) -> str:
@@ -150,9 +152,34 @@ class Response:
                 idx += 1
         return paths
 
+    def cost(self, *, prompt_chars: Optional[int] = None, completion_chars: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Return a cost breakdown dict for this response. Uses provider-reported usage when available.
+        If prompt_chars/completion_chars are provided, they are used to approximate missing token counts.
+        """
+        # Cache only the no-args call to keep deterministic behavior when char-based approximations are passed
+        if prompt_chars is None and completion_chars is None and self._cost_cache is not None:
+            return self._cost_cache
+        result = _estimate_cost(
+            model=self.model,
+            usage=self.usage,
+            prompt_chars=prompt_chars,
+            completion_chars=completion_chars if completion_chars is not None else len(self.text) if self.text else None,
+            provider=self.provider,
+        )
+        if prompt_chars is None and completion_chars is None:
+            self._cost_cache = result
+        return result
+
+    def total_cost(self, *, prompt_chars: Optional[int] = None, completion_chars: Optional[int] = None) -> Optional[float]:
+        """Convenience accessor for the total USD cost."""
+        breakdown = self.cost(prompt_chars=prompt_chars, completion_chars=completion_chars)
+        return breakdown.get("total")
+
     def to_dict(self) -> Dict[str, Any]:
         """
         JSON-safe representation: bytes become base64 strings.
+        Includes a 'cost' field computed from usage/pricing when possible.
         """
         def encode_part(part: Dict[str, Any]) -> Dict[str, Any]:
             if part.get("type") == "image":
@@ -171,6 +198,7 @@ class Response:
             "finish_reason": self.finish_reason,
             "usage": self.usage,
             "raw": self.raw,
+            "cost": self.cost(),  # computed lazily
         }
 
 class TextEvent:
