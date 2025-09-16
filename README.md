@@ -141,6 +141,7 @@ python -m zenllm --model gpt-4o-mini
 
 Options (common ones):
 - --model MODEL            Model name (defaults to ZENLLM_DEFAULT_MODEL or gpt-4.1)
+- --select-model           Interactively choose a model from the provider (OpenAI-compatible)
 - --provider PROVIDER      Force provider (openai/gpt, gemini, claude, deepseek, together, xai, groq)
 - --base-url URL           OpenAI-compatible base URL (e.g., http://localhost:11434/v1)
 - --api-key KEY            Override API key for this run
@@ -158,7 +159,7 @@ Interactive commands:
 - /exit | /quit | :q    Exit
 - /reset                Reset conversation history
 - /system TEXT          Set/replace the system prompt
-- /model NAME           Switch model during the session
+- /model [NAME]         Switch model; omit NAME to select interactively
 - /img PATH [PATH...]   Attach image(s) to the next user message
 
 Examples:

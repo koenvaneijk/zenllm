@@ -22,8 +22,58 @@ def _print_help_commands():
     print("  /exit | /quit | :q    Exit the chat")
     print("  /reset                Reset conversation history")
     print('  /system &lt;text&gt;       Set/replace the system prompt for the session')
-    print('  /model  &lt;name&gt;        Switch model (e.g., "/model gpt-4o-mini")')
+    print('  /model  [name]        Switch model (omit name to select interactively)')
     print('  /img    &lt;path(s)&gt;     Attach one or more image paths to the next user message')
+
+
+def _select_model_interactive(
+    provider: Optional[str],
+    base_url: Optional[str],
+    api_key: Optional[str],
+    limit: int = 200,
+) -> Optional[str]:
+    """
+    Interactively select a model.
+    - Tries to list models for OpenAI-compatible providers (or base_url).
+    - Falls back to manual input if listing is not supported.
+    Returns selected model id, a manually entered name, or None on cancel.
+    """
+    print("Model selection:")
+    models: List[str] = []
+    try:
+        listed = llm.list_models(provider=provider, base_url=base_url, api_key=api_key)
+        models = sorted([m.id for m in listed])
+    except NotImplementedError:
+        print("Listing models is not supported for this provider. Enter a model name manually.")
+    except Exception as e:
+        print(f"Could not fetch model list: {e}")
+        print("Enter a model name manually or press Enter to cancel.")
+
+    if models:
+        if limit and len(models) > limit:
+            print(f"Fetched {len(models)} models; showing first {limit}. Use a name to select hidden ones.")
+            display = models[:limit]
+        else:
+            display = models
+        for i, mid in enumerate(display, 1):
+            print(f"  {i:3d}. {mid}")
+
+        while True:
+            sel = input("Select model (# or name, empty to cancel): ").strip()
+            if not sel:
+                return None
+            if sel.isdigit():
+                idx = int(sel)
+                if 1 <= idx <= len(display):
+                    return display[idx - 1]
+                print(f"Enter a number between 1 and {len(display)}, a model name, or press Enter to cancel.")
+                continue
+            # Accept direct model name
+            return sel
+
+    # Fallback: manual entry
+    manual = input("Model name (empty to cancel): ").strip()
+    return manual or None
 
 
 def _interactive_chat(
@@ -36,6 +86,7 @@ def _interactive_chat(
     show_usage: bool,
     show_cost: bool,
     options: Dict[str, Any],
+    select_model: bool = False,
 ):
     print("ZenLLM CLI — interactive chat")
     print("Type /help for commands. Press Ctrl+C or type /exit to quit.")
@@ -49,6 +100,13 @@ def _interactive_chat(
     current_model = model
     current_provider = provider
     current_system = system_prompt
+
+    # Optional pre-session model selection
+    if select_model:
+        chosen = _select_model_interactive(current_provider, base_url, api_key)
+        if chosen:
+            current_model = chosen
+            print("Selected model: {0}".format(current_model))
 
     while True:
         try:
@@ -86,13 +144,18 @@ def _interactive_chat(
             print("System prompt set.")
             continue
 
-        if user.startswith("/model "):
-            new_model = user[len("/model ") :].strip()
-            if new_model:
-                current_model = new_model
-                print("Switched model to: {0}".format(current_model))
+        if user.startswith("/model"):
+            arg = user[len("/model") :].strip()
+            if not arg:
+                chosen = _select_model_interactive(current_provider, base_url, api_key)
+                if chosen:
+                    current_model = chosen
+                    print("Switched model to: {0}".format(current_model))
+                else:
+                    print("Model unchanged.")
             else:
-                print("Usage: /model <model-name>")
+                current_model = arg
+                print("Switched model to: {0}".format(current_model))
             continue
 
         if user.startswith("/img "):
@@ -175,6 +238,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--max-tokens", type=int, default=None, help="Max tokens to generate")
     parser.add_argument("--show-usage", action="store_true", help="Print usage dict after each response (if available)")
     parser.add_argument("--show-cost", action="store_true", help="Print cost estimate after each response (if pricing available)")
+    parser.add_argument("--select-model", action="store_true", help="Interactively select a model from the provider (OpenAI-compatible endpoints)")
     parser.add_argument("-q", "--once", default=None, help="Send a single prompt and exit (non-interactive)")
 
     args = parser.parse_args(argv)
@@ -183,6 +247,12 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # One-shot mode
     if args.once is not None:
+        # Optional pre-selection for one-shot mode
+        if args.select_model:
+            chosen = _select_model_interactive(args.provider, args.base_url, args.api_key)
+            if chosen:
+                args.model = chosen
+
         msgs: List[Any] = []
         if args.system:
             msgs.append(("system", args.system))
@@ -239,6 +309,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         show_usage=args.show_usage,
         show_cost=args.show_cost,
         options=options,
+        select_model=args.select_model,
     )
     return 0
 
