@@ -95,7 +95,6 @@ def _interactive_chat(
 ):
     print("ZenLLM CLI — interactive chat")
     print("Type /help for commands. Press Ctrl+C or type /exit to quit.")
-    print("Using model: {0}{1}".format(model, " (provider: {0})".format(provider) if provider else ""))
 
     messages: List[Any] = []
     if system_prompt:
@@ -112,6 +111,8 @@ def _interactive_chat(
         if chosen:
             current_model = chosen
             print("Selected model: {0}".format(current_model))
+
+    print("Using model: {0}{1}".format(current_model, " (provider: {0})".format(current_provider) if current_provider else ""))
 
     while True:
         try:
@@ -246,7 +247,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--select-model", action="store_true", help="Interactively select a model from the provider (OpenAI-compatible endpoints)")
     parser.add_argument("-q", "--once", default=None, help="Send a single prompt and exit (non-interactive)")
 
-    args = parser.parse_args(argv)
+    arg_list = list(argv) if argv is not None else sys.argv[1:]
+    # Detect whether the user explicitly provided --model/-m
+    user_provided_model = False
+    for tok in arg_list:
+        if tok in ("-m", "--model") or tok.startswith("--model="):
+            user_provided_model = True
+            break
+
+    args = parser.parse_args(arg_list)
     options = _build_options(args)
     stream = not args.no_stream
 
@@ -259,10 +268,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         else:
             args.model = llm.DEFAULT_MODEL
 
+    # Determine if we should prompt for model selection (default when --model was not provided)
+    auto_select_model = args.select_model or (not user_provided_model)
+
     # One-shot mode
     if args.once is not None:
-        # Optional pre-selection for one-shot mode
-        if args.select_model:
+        # Optional pre-selection (default when --model was not provided)
+        if auto_select_model:
             chosen = _select_model_interactive(args.provider, args.base_url, args.api_key)
             if chosen:
                 args.model = chosen
@@ -323,7 +335,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         show_usage=args.show_usage,
         show_cost=args.show_cost,
         options=options,
-        select_model=args.select_model,
+        select_model=auto_select_model,
     )
     return 0
 
