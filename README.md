@@ -266,6 +266,55 @@ Notes:
 - If a provider reports 400/401/403/404/422 errors, we do not retry and we move to the next provider.
 - Retryable errors include 408/429/5xx and network timeouts. Exponential backoff with jitter is used.
 
+## 💰 Cost Estimation
+
+ZenLLM automatically estimates the cost of an API call when pricing information is available for the model used.
+
+### After a Call (Most Common)
+
+The `Response` object returned by `generate()` and `chat()` provides methods to access cost information. This is the simplest way to track spending.
+
+```python
+import zenllm as llm
+
+resp = llm.generate("Why is the sky blue?", model="gpt-4.1")
+
+# Get total cost as a float
+total_cost = resp.cost()
+if total_cost is not None:
+    print(f"Cost: ${total_cost:.6f}")
+
+# Get a detailed breakdown
+breakdown = resp.cost_breakdown()
+print(breakdown)
+```
+This also works in the CLI via the `--show-cost` flag.
+
+### Programmatically Before a Call
+
+To check model pricing before making an API call, you can import the provider class directly and use its `get_model_pricing` method. This is useful for building cost calculators or user-facing UIs.
+
+```python
+from zenllm.providers.openai import OpenAIProvider
+from zenllm.providers.anthropic import AnthropicProvider
+
+# Create provider instances
+openai = OpenAIProvider()
+anthropic = AnthropicProvider()
+
+# Get pricing for a specific model
+gpt_price = openai.get_model_pricing("gpt-5-mini")
+# Returns {'input': 0.25, 'output': 2.0}
+
+claude_price = anthropic.get_model_pricing("claude-haiku-3.5")
+# Returns {'input': 0.8, 'output': 4.0}
+
+if gpt_price:
+    print(f"GPT-5-mini input cost: ${gpt_price['input']} / 1M tokens")
+```
+
+The method returns a dictionary with `input` and `output` prices per million tokens, or `None` if the model's pricing is not available.
+
 ## 🧱 API overview
 
 - generate(prompt=None, *, model=..., system=None, image=None, images=None, stream=False, options=None, provider=None, base_url=None, api_key=None, fallback=None)
