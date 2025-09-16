@@ -12,6 +12,7 @@ from .providers.openai import OpenAIProvider
 from .providers.deepseek import DeepseekProvider
 from .providers.together import TogetherProvider
 from .providers.xai import XaiProvider
+from .providers.groq import GroqProvider
 from .pricing import estimate_cost as _estimate_cost
 
 # ---- Providers registry and selection ----
@@ -24,6 +25,7 @@ _PROVIDERS = {
     "together": TogetherProvider(),
     "xai": XaiProvider(),
     "grok": XaiProvider(),
+    "groq": GroqProvider(),
 }
 
 def _get_provider(model_name: Optional[str], provider: Optional[str] = None, **kwargs):
