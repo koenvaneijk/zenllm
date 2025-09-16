@@ -218,8 +218,8 @@ Streaming:
 - Call stream.finalize() to materialize a Response from the streamed events.
 
 Provider selection:
-- Automatic by model prefix: gpt, gemini, claude, deepseek, together, xai, grok
-- Override with provider="gpt"|"openai"|"openai-compatible"|"gemini"|"claude"|"deepseek"|"together"|"xai"
+- Automatic by model prefix: gpt, gemini, claude, deepseek, together, xai, grok, groq
+- Override with provider="gpt"|"openai"|"openai-compatible"|"gemini"|"claude"|"deepseek"|"together"|"xai"|"groq"
 - OpenAI-compatible: pass base_url (and optional api_key) and we append /chat/completions
 - Fallback chains: pass fallback=FallbackConfig(...) or set env ZENLLM_FALLBACK="provider:model,provider:model,..."
 
@@ -232,6 +232,7 @@ Provider selection:
 | Google     | `GEMINI_API_KEY`    | `gemini`     | Text + Images (inline_data base64)              | `gemini-2.5-pro`, `gemini-2.5-flash`                 |
 | OpenAI     | `OPENAI_API_KEY`    | `gpt`        | Text + Images (`image_url`, supports data URLs) | `gpt-4.1`, `gpt-4o`                                  |
 | TogetherAI | `TOGETHER_API_KEY`  | `together`   | OpenAI-compatible; image support may vary       | `together/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo` |
+| Groq       | `GROQ_API_KEY`      | `groq`       | OpenAI-compatible; image support may vary       | `llama-3.1-70b-versatile`                            |
 | X.ai       | `XAI_API_KEY`       | `xai`, `grok` | OpenAI-compatible; image support may vary       | `grok-code-fast-1`                                   |
 
 Notes:
@@ -263,7 +264,7 @@ import zenllm as llm
 resp = llm.generate(
   "Hello!",
   model="gpt-4.1",
-  provider="openai",  # or "gpt", "openai-compatible", "gemini", "claude", "deepseek", "together"
+  provider="openai",  # or "gpt", "openai-compatible", "gemini", "claude", "deepseek", "together", "xai", "groq"
 )
 print(resp.text)
 ```
