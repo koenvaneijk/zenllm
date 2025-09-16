@@ -86,10 +86,15 @@ def list_models(
     Implemented providers:
       - OpenAI-compatible endpoints (provider: None | "openai" | "gpt" | "openai-compatible", or if base_url is provided)
       - Groq (provider: "groq")
+      - Anthropic (provider: "anthropic" | "claude")
+      - DeepSeek (provider: "deepseek")
+      - Google Gemini (provider: "gemini")
+      - Together (provider: "together")
+      - X.ai (provider: "xai" | "grok")
 
     Arguments:
       - provider: which provider to query
-      - base_url: override base URL (for OpenAI-compatible or Groq)
+      - base_url: override base URL (for the given provider when supported)
       - api_key: explicit API key; defaults to provider-specific env var
 
     Returns:
@@ -109,7 +114,7 @@ def list_models(
         payload = resp.json()
         items = payload.get("data") or []
 
-    # Groq path
+    # Groq
     elif prov_key == "groq":
         url = f"{(base_url or GROQ_DEFAULT_BASE_URL).rstrip('/')}/models"
         key = api_key or os.getenv(GROQ_API_KEY_ENV)
@@ -119,24 +124,100 @@ def list_models(
         resp = requests.get(url, headers=headers, timeout=60)
         resp.raise_for_status()
         payload = resp.json()
-        # Groq follows OpenAI schema ({ "data": [...] }), but be tolerant
+        items = payload.get("data") if isinstance(payload, dict) else payload
+        if items is None:
+            items = []
+
+    # Anthropic
+    elif prov_key in ("anthropic", "claude"):
+        url = f"{(base_url or 'https://api.anthropic.com/v1').rstrip('/')}/models"
+        key = api_key or os.getenv("ANTHROPIC_API_KEY")
+        if not key:
+            raise ValueError("Missing API key for Anthropic model listing. Provide api_key=... or set ANTHROPIC_API_KEY.")
+        headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
+        resp = requests.get(url, headers=headers, timeout=60)
+        resp.raise_for_status()
+        payload = resp.json()
+        items = payload.get("data") if isinstance(payload, dict) else payload
+        if items is None:
+            items = []
+
+    # DeepSeek
+    elif prov_key == "deepseek":
+        url = f"{(base_url or 'https://api.deepseek.com').rstrip('/')}/models"
+        key = api_key or os.getenv("DEEPSEEK_API_KEY")
+        if not key:
+            raise ValueError("Missing API key for DeepSeek model listing. Provide api_key=... or set DEEPSEEK_API_KEY.")
+        headers = {"Authorization": f"Bearer {key}"}
+        resp = requests.get(url, headers=headers, timeout=60)
+        resp.raise_for_status()
+        payload = resp.json()
+        items = payload.get("data") if isinstance(payload, dict) else payload
+        if items is None:
+            items = []
+
+    # Google Gemini (OpenAI-compatible models endpoint)
+    elif prov_key in ("gemini", "google"):
+        url = f"{(base_url or 'https://generativelanguage.googleapis.com').rstrip('/')}/v1beta/openai/models"
+        key = api_key or os.getenv("GEMINI_API_KEY")
+        if not key:
+            raise ValueError("Missing API key for Google Gemini model listing. Provide api_key=... or set GEMINI_API_KEY.")
+        headers = {"Authorization": f"Bearer {key}"}
+        resp = requests.get(url, headers=headers, timeout=60)
+        resp.raise_for_status()
+        payload = resp.json()
+        items = payload.get("data") if isinstance(payload, dict) else payload
+        if items is None:
+            items = []
+
+    # Together AI
+    elif prov_key in ("together", "togetherai"):
+        url = f"{(base_url or 'https://api.together.xyz/v1').rstrip('/')}/models"
+        key = api_key or os.getenv("TOGETHER_API_KEY")
+        if not key:
+            raise ValueError("Missing API key for Together model listing. Provide api_key=... or set TOGETHER_API_KEY.")
+        headers = {"Authorization": f"Bearer {key}"}
+        resp = requests.get(url, headers=headers, timeout=60)
+        resp.raise_for_status()
+        payload = resp.json()
+        # Together may return a top-level array or an object with data
+        if isinstance(payload, list):
+            items = payload
+        else:
+            items = payload.get("data") or []
+
+    # X.ai (also alias "grok")
+    elif prov_key in ("xai", "grok"):
+        url = f"{(base_url or 'https://api.x.ai/v1').rstrip('/')}/models"
+        key = api_key or os.getenv("XAI_API_KEY")
+        if not key:
+            raise ValueError("Missing API key for X.ai model listing. Provide api_key=... or set XAI_API_KEY.")
+        headers = {"Authorization": f"Bearer {key}"}
+        resp = requests.get(url, headers=headers, timeout=60)
+        resp.raise_for_status()
+        payload = resp.json()
         items = payload.get("data") if isinstance(payload, dict) else payload
         if items is None:
             items = []
 
     else:
-        raise NotImplementedError("list_models is implemented for OpenAI-compatible providers and Groq.")
+        raise NotImplementedError("list_models is implemented for OpenAI-compatible providers, Groq, Anthropic, DeepSeek, Gemini, Together, and X.ai.")
 
     models: List[ModelInfo] = []
     for it in items:
-        mid = it.get("id") if isinstance(it, dict) else None
+        if not isinstance(it, dict):
+            continue
+        mid = it.get("id")
         if not mid:
             continue
+        created_val = it.get("created")
+        # Some providers use created_at (ISO string); we keep created=None to avoid extra deps for parsing
+        owned_by = it.get("owned_by") or it.get("organization")
         models.append(ModelInfo(
             id=mid,
-            created=(it.get("created") if isinstance(it, dict) else None),
-            owned_by=(it.get("owned_by") if isinstance(it, dict) else None),
-            raw=(it if isinstance(it, dict) else {"id": mid}),
+            created=created_val if isinstance(created_val, int) else None,
+            owned_by=owned_by,
+            raw=it,
         ))
     return models
 
