@@ -131,6 +131,49 @@ for ev in stream:
         print(ev.text, end="", flush=True)
 ```
 
+## 📟 CLI (terminal chat)
+
+Run an interactive chat in your terminal:
+
+```bash
+python -m zenllm --model gpt-4o-mini
+```
+
+Options (common ones):
+- --model MODEL            Model name (defaults to ZENLLM_DEFAULT_MODEL or gpt-4.1)
+- --provider PROVIDER      Force provider (openai/gpt, gemini, claude, deepseek, together, xai, groq)
+- --base-url URL           OpenAI-compatible base URL (e.g., http://localhost:11434/v1)
+- --api-key KEY            Override API key for this run
+- --system TEXT            System prompt for the session
+- --no-stream              Disable streaming output
+- --temperature FLOAT      Sampling temperature
+- --top-p FLOAT            Top-p nucleus sampling
+- --max-tokens INT         Limit on generated tokens
+- --show-usage             Print usage dict after responses (if available)
+- --show-cost              Print cost estimate after responses (if pricing is known)
+- --once "PROMPT"          Send a single prompt and exit (non-interactive)
+
+Interactive commands:
+- /help                 Show help
+- /exit | /quit | :q    Exit
+- /reset                Reset conversation history
+- /system TEXT          Set/replace the system prompt
+- /model NAME           Switch model during the session
+- /img PATH [PATH...]   Attach image(s) to the next user message
+
+Examples:
+```bash
+# Local model via OpenAI-compatible API (e.g., Ollama)
+python -m zenllm --base-url http://localhost:11434/v1 --model qwen2.5:7b
+
+# One-off question, streaming, show cost
+python -m zenllm --model gpt-4o-mini --show-cost --once "Why is the sky blue?"
+```
+
+Note:
+- The CLI uses the same env vars as the library (e.g., OPENAI_API_KEY, GEMINI_API_KEY, etc.).
+- Fallback chains via ZENLLM_FALLBACK are supported by the underlying API calls.
+
 ## 🔁 Fallback chains (automatic provider failover)
 
 You can define an ordered chain of providers and models. ZenLLM will try them in order and move on when a provider is down, rate-limiting, or times out. By default, we do not switch mid-stream once tokens start.
