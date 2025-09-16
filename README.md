@@ -14,6 +14,7 @@ The zen, simple, and unified API for LLMs with the best developer experience: tw
 - Simple inputs for 95% cases. Escape hatch for advanced parts remains.
 - Always returns a structured Response (or a ResponseStream when streaming).
 - Image outputs are first-class (bytes or URLs), not lost in translation.
+- CLI model picker: when you start the CLI without --model, ZenLLM now prompts you to select a model from the provider (supports OpenAI, Groq, Anthropic, DeepSeek, Gemini, Together, X.ai, and OpenAI-compatible endpoints).
 
 ## 🚀 Installation
 
@@ -139,9 +140,11 @@ Run an interactive chat in your terminal:
 python -m zenllm --model gpt-4o-mini
 ```
 
+If you omit --model, the CLI will automatically show a model picker populated from your selected provider (OpenAI, Groq, Anthropic, DeepSeek, Gemini, Together, X.ai, or any OpenAI-compatible base_url).
+
 Options (common ones):
 - --model MODEL            Model name (defaults to ZENLLM_DEFAULT_MODEL or gpt-4.1)
-- --select-model           Interactively choose a model from the provider (OpenAI-compatible)
+- --select-model           Force the interactive model picker on startup (by default, the picker appears when you did not pass --model)
 - --provider PROVIDER      Force provider (openai/gpt, gemini, claude, deepseek, together, xai, groq)
 - --base-url URL           OpenAI-compatible base URL (e.g., http://localhost:11434/v1)
 - --api-key KEY            Override API key for this run
@@ -155,8 +158,8 @@ Options (common ones):
 - --once "PROMPT"          Send a single prompt and exit (non-interactive)
 
 Tip:
-- For OpenAI (provider "openai" or "gpt"): if you omit --model, ZenLLM defaults to "gpt-5".
-  During interactive model selection for OpenAI, pressing Enter selects "gpt-5".
+- By default, the CLI prompts for model selection when you did not pass --model.
+- For OpenAI (provider "openai" or "gpt"): during interactive selection, pressing Enter selects "gpt-5".
 
 Interactive commands:
 - /help                 Show help
@@ -168,6 +171,9 @@ Interactive commands:
 
 Examples:
 ```bash
+# Pick a model interactively from Groq
+python -m zenllm --provider groq
+
 # Local model via OpenAI-compatible API (e.g., Ollama)
 python -m zenllm --base-url http://localhost:11434/v1 --model qwen2.5:7b
 
@@ -176,8 +182,43 @@ python -m zenllm --model gpt-4o-mini --show-cost --once "Why is the sky blue?"
 ```
 
 Note:
-- The CLI uses the same env vars as the library (e.g., OPENAI_API_KEY, GEMINI_API_KEY, etc.).
+- The CLI uses the same env vars as the library (e.g., OPENAI_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, ANTHROPIC_API_KEY, TOGETHER_API_KEY, XAI_API_KEY).
 - Fallback chains via ZENLLM_FALLBACK are supported by the underlying API calls.
+
+## 📚 List models programmatically
+
+You can query available models for each provider:
+
+```python
+import zenllm as llm
+
+# OpenAI (or other OpenAI-compatible endpoints via base_url)
+openai_models = llm.list_models(provider="openai")  # or provider=None with OPENAI_API_KEY set
+print([m.id for m in openai_models][:10])
+
+# Groq
+groq_models = llm.list_models(provider="groq")
+
+# Anthropic (Claude)
+claude_models = llm.list_models(provider="claude")
+
+# DeepSeek
+deepseek_models = llm.list_models(provider="deepseek")
+
+# Google Gemini (OpenAI-compatible list endpoint)
+gemini_models = llm.list_models(provider="gemini")
+
+# Together AI
+together_models = llm.list_models(provider="together")
+
+# X.ai (Grok)
+xai_models = llm.list_models(provider="xai")
+
+# OpenAI-compatible custom base (e.g., local)
+local_models = llm.list_models(base_url="http://localhost:11434/v1")
+```
+
+Each item is a ModelInfo with fields: id, created (if integer), owned_by (if provided), and raw (the full provider response item).
 
 ## 🔁 Fallback chains (automatic provider failover)
 
