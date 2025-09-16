@@ -154,6 +154,10 @@ Options (common ones):
 - --show-cost              Print cost estimate after responses (if pricing is known)
 - --once "PROMPT"          Send a single prompt and exit (non-interactive)
 
+Tip:
+- For OpenAI (provider "openai" or "gpt"): if you omit --model, ZenLLM defaults to "gpt-5".
+  During interactive model selection for OpenAI, pressing Enter selects "gpt-5".
+
 Interactive commands:
 - /help                 Show help
 - /exit | /quit | :q    Exit

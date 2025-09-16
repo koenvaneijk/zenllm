@@ -37,7 +37,10 @@ def _select_model_interactive(
     - Tries to list models for OpenAI-compatible providers (or base_url).
     - Falls back to manual input if listing is not supported.
     Returns selected model id, a manually entered name, or None on cancel.
+    For OpenAI ("openai" or "gpt" provider), pressing Enter selects "gpt-5".
     """
+    is_openai = bool(provider and provider.lower() in ("openai", "gpt"))
+
     print("Model selection:")
     models: List[str] = []
     try:
@@ -47,7 +50,7 @@ def _select_model_interactive(
         print("Listing models is not supported for this provider. Enter a model name manually.")
     except Exception as e:
         print(f"Could not fetch model list: {e}")
-        print("Enter a model name manually or press Enter to cancel.")
+        print("Enter a model name manually or press Enter to {('select gpt-5' if is_openai else 'cancel')}.")
 
     if models:
         if limit and len(models) > limit:
@@ -59,21 +62,23 @@ def _select_model_interactive(
             print(f"  {i:3d}. {mid}")
 
         while True:
-            sel = input("Select model (# or name, empty to cancel): ").strip()
+            prompt_str = "Select model (# or name, empty for gpt-5): " if is_openai else "Select model (# or name, empty to cancel): "
+            sel = input(prompt_str).strip()
             if not sel:
-                return None
+                return "gpt-5" if is_openai else None
             if sel.isdigit():
                 idx = int(sel)
                 if 1 <= idx <= len(display):
                     return display[idx - 1]
-                print(f"Enter a number between 1 and {len(display)}, a model name, or press Enter to cancel.")
+                print(f"Enter a number between 1 and {len(display)}, a model name, or press Enter to {'select gpt-5' if is_openai else 'cancel'}.")
                 continue
             # Accept direct model name
             return sel
 
     # Fallback: manual entry
-    manual = input("Model name (empty to cancel): ").strip()
-    return manual or None
+    manual_prompt = "Model name (empty for gpt-5): " if is_openai else "Model name (empty to cancel): "
+    manual = input(manual_prompt).strip()
+    return manual or ("gpt-5" if is_openai else None)
 
 
 def _interactive_chat(
@@ -227,7 +232,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         prog="zenllm",
         description="Chat with LLMs in your terminal using ZenLLM.",
     )
-    parser.add_argument("-m", "--model", default=llm.DEFAULT_MODEL, help="Model name (default from ZENLLM_DEFAULT_MODEL or {0})".format(llm.DEFAULT_MODEL))
+    parser.add_argument("-m", "--model", default=None, help="Model name (default: gpt-5 for provider openai/gpt; otherwise ZENLLM_DEFAULT_MODEL or {0})".format(llm.DEFAULT_MODEL))
     parser.add_argument("--provider", default=None, help="Force provider (e.g., openai, gemini, claude, deepseek, together, xai, groq)")
     parser.add_argument("--base-url", default=None, help="OpenAI-compatible base URL (e.g., http://localhost:11434/v1)")
     parser.add_argument("--api-key", default=None, help="Override API key (otherwise use provider-specific env var)")
@@ -244,6 +249,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
     options = _build_options(args)
     stream = not args.no_stream
+
+    # If no model provided, choose defaults:
+    # - For OpenAI ("openai" or "gpt" provider): use "gpt-5"
+    # - Otherwise: use library default (env ZENLLM_DEFAULT_MODEL or {0})
+    if args.model is None:
+        if args.provider and args.provider.lower() in ("openai", "gpt"):
+            args.model = "gpt-5"
+        else:
+            args.model = llm.DEFAULT_MODEL
 
     # One-shot mode
     if args.once is not None:
