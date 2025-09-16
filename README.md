@@ -319,6 +319,7 @@ The method returns a dictionary with `input` and `output` prices per million tok
 
 - generate(prompt=None, *, model=..., system=None, image=None, images=None, stream=False, options=None, provider=None, base_url=None, api_key=None, fallback=None)
 - chat(messages, *, model=..., system=None, stream=False, options=None, provider=None, base_url=None, api_key=None, fallback=None)
+- agent(messages, *, tools=None, auto_run_tools=False, model=..., system=None, stream=False, options=None, provider=None, base_url=None, api_key=None, fallback=None)
 
 Inputs:
 - prompt: str
@@ -377,6 +378,68 @@ Notes:
 - For OpenAI-compatible endpoints (like local models), pass `base_url` and optional `api_key`. We’ll route via the OpenAI-compatible provider and append `/chat/completions`.
 - Some third-party endpoints don’t support vision. If you pass images to an unsupported model, the upstream provider may return an error.
 - DeepSeek and Together may not accept image URLs; prefer path/bytes/file for images with those providers.
+
+## 🧪 Experimental: @tool decorator and agent() (preview)
+
+Define Python functions as LLM-callable tools with a simple decorator, and pass them to the high-level agent() helper. Autorun of tools is disabled by default.
+
+Notes:
+- Current preview forwards tool definitions to the provider using an OpenAI-style schema. Automatic execution of tools on the client side (autorun loop) is intentionally off by default and will be expanded in a future release.
+- Provider support for tool/function calling varies. OpenAI-compatible endpoints tend to support it; others may ignore the tools field.
+
+Example
+```python
+import zenllm as llm
+
+@llm.tool(description="Get current weather by city")
+def get_weather(city: str):
+    """Return current weather for a city."""
+    # Implement your logic here (e.g., call a REST API)
+    return {"temp_c": 21.5, "condition": "sunny"}
+
+# Send tool definitions to the model (no automatic execution by default)
+resp = llm.agent(
+    messages=[("user", "What's the weather in Paris right now?")],
+    tools=[get_weather],           # you can also pass a list of prebuilt dict specs
+    model="gpt-4.1",
+    # auto_run_tools=False is the default
+)
+
+print(resp.text)
+```
+
+Decorator signature
+- @zenllm.tool(name=None, description=None, parameters=None, safe=False)
+  - name: override the tool name (defaults to function name)
+  - description: short description (defaults to first line of docstring)
+  - parameters: JSON Schema for arguments (auto-derived from type hints if omitted)
+  - safe: metadata you can use to mark read-only tools (reserved for future autorun policies)
+
+Passing raw specs (optional)
+```python
+tool_spec = {
+    "name": "get_weather",
+    "description": "Get current weather by city",
+    "parameters": {
+        "type": "object",
+        "properties": {"city": {"type": "string"}},
+        "required": ["city"],
+        "additionalProperties": False,
+    },
+}
+resp = llm.agent(
+    messages=[("user", "What's the weather in Paris right now?")],
+    tools=[tool_spec],             # dict specs are accepted too
+    model="gpt-4.1",
+)
+```
+
+Tip:
+- You can also pass tools directly to chat() by building the OpenAI-style schema yourself:
+  options={"tools": [{"type": "function", "function": {...}}], "tool_choice": "auto"}
+
+Roadmap:
+- Streaming tool-call events, structured JSON output helpers, and an opt-in autorun loop will land in subsequent updates.
 
 ## 🧪 Advanced examples
 
