@@ -261,10 +261,14 @@ class TestCoreOrchestrationAndFallback(unittest.TestCase):
         a = AProvider()
         b = BProvider()
 
+        # Make the first provider raise during call (not during selection)
+        def a_call(self, model, messages, system_prompt=None, stream=False, **kwargs):
+            raise ErrWithStatus(400)
+        a.call = types.MethodType(a_call, a)
+
         def fake_get_provider(model_name, provider=None, **kwargs):
             if provider == "A":
-                # Simulate error from A
-                raise ErrWithStatus(400)
+                return a
             return b
 
         fb = z.FallbackConfig(
@@ -293,6 +297,7 @@ class TestCoreOrchestrationAndFallback(unittest.TestCase):
         attempts = resp.raw["fallback"]["attempts"]
         self.assertGreaterEqual(len(attempts), 1)
         self.assertEqual(attempts[0]["provider"], "a")  # from AProvider -> "a"
+
 
     def test_merge_options_precedence(self):
         merged = z._merge_options({"a": 1, "b": 1}, {"b": 2, "c": 3})
