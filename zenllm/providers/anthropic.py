@@ -13,55 +13,37 @@ ANTHROPIC_PRICING = [
       "model_id": "claude-opus-4.1",
       "input_price_per_million_tokens": 15.00,
       "output_price_per_million_tokens": 75.00,
-      "prompt_cache_write_per_million_tokens": 18.75,
-      "prompt_cache_read_per_million_tokens": 1.50
     },
     {
       "model_id": "claude-sonnet-4",
       "input_price_per_million_tokens": 3.00,
       "output_price_per_million_tokens": 15.00,
-      "long_context_input_price_per_million_tokens": 6.00,
-      "long_context_output_price_per_million_tokens": 22.50,
-      "prompt_cache_write_per_million_tokens": 3.75,
-      "prompt_cache_read_per_million_tokens": 0.30,
-      "long_context_prompt_cache_write_per_million_tokens": 7.50,
-      "long_context_prompt_cache_read_per_million_tokens": 0.60
     },
     {
       "model_id": "claude-haiku-3.5",
       "input_price_per_million_tokens": 0.80,
       "output_price_per_million_tokens": 4.00,
-      "prompt_cache_write_per_million_tokens": 1.00,
-      "prompt_cache_read_per_million_tokens": 0.08
     },
     # Legacy models
     {
       "model_id": "claude-opus-4",
       "input_price_per_million_tokens": 15.00,
       "output_price_per_million_tokens": 75.00,
-      "prompt_cache_write_per_million_tokens": 18.75,
-      "prompt_cache_read_per_million_tokens": 1.50
     },
     {
       "model_id": "claude-opus-3",
       "input_price_per_million_tokens": 15.00,
       "output_price_per_million_tokens": 75.00,
-      "prompt_cache_write_per_million_tokens": 18.75,
-      "prompt_cache_read_per_million_tokens": 1.50
     },
     {
       "model_id": "claude-sonnet-3.7",
       "input_price_per_million_tokens": 3.00,
       "output_price_per_million_tokens": 15.00,
-      "prompt_cache_write_per_million_tokens": 3.75,
-      "prompt_cache_read_per_million_tokens": 0.30
     },
     {
       "model_id": "claude-haiku-3",
       "input_price_per_million_tokens": 0.25,
       "output_price_per_million_tokens": 1.25,
-      "prompt_cache_write_per_million_tokens": 0.30,
-      "prompt_cache_read_per_million_tokens": 0.03
     }
 ]
 
