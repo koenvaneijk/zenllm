@@ -3,6 +3,7 @@ import warnings
 import base64
 import time
 import random
+import requests
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Union, Iterable, Iterator
 
@@ -63,6 +64,64 @@ def _get_provider(model_name: Optional[str], provider: Optional[str] = None, **k
 
 # Default model (can be overridden by env)
 DEFAULT_MODEL = os.getenv("ZENLLM_DEFAULT_MODEL", "gpt-4.1")
+
+# ---- Models listing API ----
+
+@dataclass
+class ModelInfo:
+    id: str
+    created: Optional[int] = None
+    owned_by: Optional[str] = None
+    raw: Optional[Dict[str, Any]] = None
+
+def list_models(
+    provider: Optional[str] = None,
+    *,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> List[ModelInfo]:
+    """
+    List models available for a provider.
+    Currently implemented for OpenAI-compatible endpoints.
+
+    Arguments:
+      - provider: "openai" | "gpt" | "openai-compatible" (others not yet implemented)
+      - base_url: override base URL for OpenAI-compatible endpoints (e.g. http://localhost:11434/v1)
+      - api_key: explicit API key; defaults to OPENAI_API_KEY for OpenAI-compatible
+
+    Returns:
+      - List[ModelInfo]
+    """
+    prov_key = (provider or "").lower() if provider else None
+    is_openai_like = (base_url is not None) or (prov_key in (None, "openai", "gpt", "openai-compatible"))
+
+    if not is_openai_like:
+        # Future: add implementations for other providers.
+        raise NotImplementedError("list_models is currently implemented for OpenAI-compatible providers only.")
+
+    url = f"{(base_url or 'https://api.openai.com/v1').rstrip('/')}/models"
+    key = api_key or os.getenv("OPENAI_API_KEY")
+    if not key:
+        raise ValueError("Missing API key for listing models. Provide api_key=... or set OPENAI_API_KEY.")
+
+    headers = {"Authorization": f"Bearer {key}"}
+    resp = requests.get(url, headers=headers, timeout=60)
+    resp.raise_for_status()
+    payload = resp.json()
+    items = payload.get("data") or []
+
+    models: List[ModelInfo] = []
+    for it in items:
+        mid = it.get("id")
+        if not mid:
+            continue
+        models.append(ModelInfo(
+            id=mid,
+            created=it.get("created"),
+            owned_by=it.get("owned_by"),
+            raw=it,
+        ))
+    return models
 
 # ---- Fallback configuration ----
 
