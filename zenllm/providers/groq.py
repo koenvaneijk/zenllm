@@ -203,7 +203,6 @@ class GroqProvider(LLMProvider):
         allowed_opts = {
             "temperature",
             "top_p",
-            "max_tokens",
             "stop",
             "presence_penalty",
             "frequency_penalty",

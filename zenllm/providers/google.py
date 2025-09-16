@@ -178,10 +178,6 @@ class GoogleProvider(LLMProvider):
             generation_config["topK"] = kwargs.pop("top_k")
         if "topK" in kwargs:
             generation_config["topK"] = kwargs.pop("topK")
-        if "max_tokens" in kwargs:
-            generation_config["maxOutputTokens"] = kwargs.pop("max_tokens")
-        if "maxOutputTokens" in kwargs:
-            generation_config["maxOutputTokens"] = kwargs.pop("maxOutputTokens")
         if generation_config:
             payload["generationConfig"] = generation_config
 

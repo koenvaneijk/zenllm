@@ -155,7 +155,6 @@ class AnthropicProvider(LLMProvider):
         payload = {
             "model": model or self.DEFAULT_MODEL,
             "messages": self._to_anthropic_messages(messages),
-            "max_tokens": kwargs.pop("max_tokens", 4096),
             "stream": stream,
         }
 
