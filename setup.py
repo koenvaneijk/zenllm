@@ -15,6 +15,11 @@ setup(
     install_requires=[
         "requests",
     ],
+    entry_points={
+        "console_scripts": [
+            "zenllm=zenllm.cli:main",
+        ],
+    },
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
