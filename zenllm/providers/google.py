@@ -5,7 +5,27 @@ import mimetypes
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
-from .base import LLMProvider
+from .base import LLMProvider, search_pricing_data
+
+
+GOOGLE_PRICING = [
+    {
+        "model_id": "gemini-2.5-pro",
+        "input_price_per_million_tokens": 1.25,
+        "output_price_per_million_tokens": 10.00
+    },
+    {
+        "model_id": "gemini-2.5-flash",
+        "input_price_per_million_tokens": 0.30,
+        "output_price_per_million_tokens": 2.50
+    },
+    {
+        "model_id": "gemini-2.5-flash-lite",
+        "input_price_per_million_tokens": 0.10,
+        "output_price_per_million_tokens": 0.40
+    }
+]
+
 
 class GoogleProvider(LLMProvider):
     API_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:{method}?key={api_key}"
@@ -117,6 +137,9 @@ class GoogleProvider(LLMProvider):
                 if raw:
                     norm.append({"type": "image", "source": {"kind": "bytes", "value": raw}, "mime": mime})
         return norm
+
+    def get_model_pricing(self, model_id: str) -> Optional[Dict[str, float]]:
+        return search_pricing_data(GOOGLE_PRICING, model_id)
 
     def call(self, model, messages, system_prompt=None, stream=False, **kwargs):
         api_key = self._check_api_key()

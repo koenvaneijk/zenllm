@@ -5,7 +5,27 @@ import mimetypes
 from typing import Dict, Any, List, Tuple, Optional
 
 import requests
-from .base import LLMProvider
+from .base import LLMProvider, search_pricing_data
+
+
+OPENAI_PRICING = [
+    {
+        "model_id": "gpt-5",
+        "input_price_per_million_tokens": 1.25,
+        "output_price_per_million_tokens": 10.00
+    },
+    {
+        "model_id": "gpt-5-mini",
+        "input_price_per_million_tokens": 0.25,
+        "output_price_per_million_tokens": 2.00
+    },
+    {
+        "model_id": "gpt-5-nano",
+        "input_price_per_million_tokens": 0.05,
+        "output_price_per_million_tokens": 0.40
+    }
+]
+
 
 class OpenAIProvider(LLMProvider):
     BASE_URL = "https://api.openai.com/v1"
@@ -107,6 +127,9 @@ class OpenAIProvider(LLMProvider):
                 # Backwards compatibility: plain string content
                 out.append({"role": role, "content": content})
         return out
+
+    def get_model_pricing(self, model_id: str) -> Optional[Dict[str, float]]:
+        return search_pricing_data(OPENAI_PRICING, model_id)
 
     def call(self, model, messages, system_prompt=None, stream=False, **kwargs):
         # Pop custom arguments to avoid sending them in the payload

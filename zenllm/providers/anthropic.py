@@ -5,7 +5,27 @@ import mimetypes
 from typing import Any, Dict, List, Tuple, Optional
 
 import requests
-from .base import LLMProvider
+from .base import LLMProvider, search_pricing_data
+
+
+ANTHROPIC_PRICING = [
+    {
+      "model_id": "claude-opus-4.1",
+      "input_price_per_million_tokens": 15.00,
+      "output_price_per_million_tokens": 75.00
+    },
+    {
+      "model_id": "claude-sonnet-4",
+      "input_price_per_million_tokens": 3.00,
+      "output_price_per_million_tokens": 15.00
+    },
+    {
+      "model_id": "claude-haiku-3.5",
+      "input_price_per_million_tokens": 0.80,
+      "output_price_per_million_tokens": 4.00
+    }
+]
+
 
 class AnthropicProvider(LLMProvider):
     API_URL = "https://api.anthropic.com/v1/messages"
@@ -98,6 +118,9 @@ class AnthropicProvider(LLMProvider):
                 # Fallback: plain string content becomes a single text block
                 out.append({"role": role, "content": [{"type": "text", "text": str(content)}]})
         return out
+
+    def get_model_pricing(self, model_id: str) -> Optional[Dict[str, float]]:
+        return search_pricing_data(ANTHROPIC_PRICING, model_id)
 
     def call(self, model, messages, system_prompt=None, stream=False, **kwargs):
         api_key = self._check_api_key()

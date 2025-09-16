@@ -5,7 +5,22 @@ import mimetypes
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
-from .base import LLMProvider
+from .base import LLMProvider, search_pricing_data
+
+
+DEEPSEEK_PRICING = [
+    {
+        "model_id": "deepseek-chat",
+        "input_price_per_million_tokens": 0.56,
+        "output_price_per_million_tokens": 1.68
+    },
+    {
+        "model_id": "deepseek-reasoner",
+        "input_price_per_million_tokens": 3.00,
+        "output_price_per_million_tokens": 7.00
+    }
+]
+
 
 class DeepseekProvider(LLMProvider):
     API_URL = "https://api.deepseek.com/chat/completions"
@@ -91,6 +106,9 @@ class DeepseekProvider(LLMProvider):
             else:
                 out.append({"role": role, "content": content})
         return out
+
+    def get_model_pricing(self, model_id: str) -> Optional[Dict[str, float]]:
+        return search_pricing_data(DEEPSEEK_PRICING, model_id)
 
     def call(self, model, messages, system_prompt=None, stream=False, **kwargs):
         api_key = self._check_api_key()

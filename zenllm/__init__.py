@@ -29,6 +29,11 @@ _PROVIDERS = {
     "groq": GroqProvider(),
 }
 
+_PROVIDER_BY_NAME = {
+    prov.__class__.__name__.replace("Provider", "").lower(): prov
+    for prov in set(_PROVIDERS.values())
+}
+
 def _get_provider(model_name: Optional[str], provider: Optional[str] = None, **kwargs):
     """
     Select provider by:
@@ -445,7 +450,8 @@ class Response:
             usage=self.usage,
             prompt_chars=prompt_chars,
             completion_chars=completion_chars if completion_chars is not None else len(self.text) if self.text else None,
-            provider=self.provider,
+            provider_name=self.provider,
+            provider_map=_PROVIDER_BY_NAME,
         )
         if prompt_chars is None and completion_chars is None:
             self._cost_cache = result

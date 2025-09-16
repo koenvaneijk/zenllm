@@ -5,7 +5,27 @@ import mimetypes
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
-from .base import LLMProvider
+from .base import LLMProvider, search_pricing_data
+
+
+TOGETHER_PRICING = [
+    {
+        "model_id": "llama-3.1-405b-instruct-turbo",
+        "input_price_per_million_tokens": 3.50,
+        "output_price_per_million_tokens": 3.50
+    },
+    {
+        "model_id": "deepseek-r1",
+        "input_price_per_million_tokens": 3.00,
+        "output_price_per_million_tokens": 7.00
+    },
+    {
+        "model_id": "qwen3-coder-480b-a35b-instruct",
+        "input_price_per_million_tokens": 2.00,
+        "output_price_per_million_tokens": 2.00
+    }
+]
+
 
 class TogetherProvider(LLMProvider):
     API_URL = "https://api.together.xyz/v1/chat/completions"
@@ -86,6 +106,9 @@ class TogetherProvider(LLMProvider):
             else:
                 out.append({"role": role, "content": content})
         return out
+
+    def get_model_pricing(self, model_id: str) -> Optional[Dict[str, float]]:
+        return search_pricing_data(TOGETHER_PRICING, model_id)
 
     def call(self, model, messages, system_prompt=None, stream=False, **kwargs):
         api_key = self._check_api_key()

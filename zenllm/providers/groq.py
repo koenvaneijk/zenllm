@@ -5,20 +5,40 @@ import mimetypes
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
 import requests
+from .base import LLMProvider, search_pricing_data
 
 
 GROQ_DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
 GROQ_API_KEY_ENV = "GROQ_API_KEY"
 
 
-class GroqProvider:
+GROQ_PRICING = [
+    {
+        "model_id": "llama-4-maverick",
+        "input_price_per_million_tokens": 0.20,
+        "output_price_per_million_tokens": 0.60
+    },
+    {
+        "model_id": "moonshotai/kimi-k2-instruct-0905",
+        "input_price_per_million_tokens": 1.00,
+        "output_price_per_million_tokens": 3.00
+    },
+    {
+        "model_id": "llama-3-8b-8k",
+        "input_price_per_million_tokens": 0.05,
+        "output_price_per_million_tokens": 0.08
+    }
+]
+
+
+class GroqProvider(LLMProvider):
     """
     OpenAI-compatible provider for Groq's Chat Completions API.
     Implements ZenLLM's provider interface with a call(...) method that can stream.
     """
 
-    def _check_api_key(self, api_key: Optional[str] = None) -> str:
-        key = api_key or os.getenv(GROQ_API_KEY_ENV)
+    def _check_api_key(self) -> str:
+        key = os.getenv(GROQ_API_KEY_ENV)
         if not key:
             raise ValueError(
                 f"Missing Groq API key. Provide api_key=... or set {GROQ_API_KEY_ENV}."
@@ -150,6 +170,9 @@ class GroqProvider:
             except Exception:
                 pass
 
+    def get_model_pricing(self, model_id: str) -> Optional[Dict[str, float]]:
+        return search_pricing_data(GROQ_PRICING, model_id)
+
     def call(
         self,
         model: str,
@@ -167,7 +190,9 @@ class GroqProvider:
         # Normalize model (allow optional "groq-" prefix)
         normalized_model = model[5:] if model and model.lower().startswith("groq-") else model
 
-        api_key = self._check_api_key(kwargs.pop("api_key", None))
+        api_key = kwargs.pop("api_key", None)
+        if not api_key:
+            api_key = self._check_api_key()
         base_url = kwargs.pop("base_url", None) or GROQ_DEFAULT_BASE_URL
         url = f"{base_url.rstrip('/')}/chat/completions"
 
