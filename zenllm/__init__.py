@@ -4,8 +4,9 @@ import base64
 import time
 import random
 import requests
+import inspect
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Union, Iterable, Iterator
+from typing import Any, Dict, List, Optional, Union, Iterable, Iterator, Callable, Tuple, get_origin, get_args
 
 from .providers.anthropic import AnthropicProvider
 from .providers.google import GoogleProvider
@@ -390,6 +391,286 @@ def image(source: Any, mime: Optional[str] = None, detail: Optional[str] = None)
     if detail:
         part["detail"] = detail
     return part
+
+# ---- Tools decorator and agent (autorun default false) ----
+
+def _doc_first_line(obj: Any) -> Optional[str]:
+    doc = inspect.getdoc(obj) or ""
+    if not doc:
+        return None
+    # First non-empty line
+    for line in doc.splitlines():
+        s = line.strip()
+        if s:
+            return s
+    return None
+
+def _is_typed_dict(tp: Any) -> bool:
+    # Best-effort detection for TypedDict subclasses at runtime
+    return isinstance(tp, type) and hasattr(tp, "__annotations__") and hasattr(tp, "__total__")
+
+def _is_optional(tp: Any) -> bool:
+    if tp is None:
+        return True
+    origin = get_origin(tp)
+    if origin is Union:
+        args = get_args(tp)
+        return any(a is type(None) for a in args)  # noqa: E721
+    return False
+
+def _unwrap_optional(tp: Any) -> Any:
+    origin = get_origin(tp)
+    if origin is Union:
+        args = [a for a in get_args(tp) if a is not type(None)]  # noqa: E721
+        if len(args) == 1:
+            return args[0]
+    return tp
+
+def _type_to_schema(tp: Any) -> Dict[str, Any]:
+    # Default fallback
+    if tp is inspect._empty or tp is Any or tp is None:
+        return {"type": "string"}
+    # Handle Optional[X]
+    if _is_optional(tp):
+        inner = _unwrap_optional(tp)
+        sch = _type_to_schema(inner)
+        # Do not mark required at the schema level; required handled outside
+        return sch
+
+    origin = get_origin(tp)
+    if origin in (list, List):
+        (item_tp,) = get_args(tp) or (Any,)
+        return {"type": "array", "items": _type_to_schema(item_tp)}
+    if origin in (dict, Dict):
+        args = get_args(tp)
+        key_tp = args[0] if args else str
+        val_tp = args[1] if args and len(args) > 1 else Any
+        # JSON object keys are strings
+        if key_tp not in (str, Any):
+            # Coerce to string keys; we still describe value type
+            pass
+        return {"type": "object", "additionalProperties": _type_to_schema(val_tp)}
+    if origin in (tuple, Tuple):
+        args = get_args(tp) or ()
+        items = [_type_to_schema(a) for a in args]
+        return {"type": "array", "prefixItems": items, "items": False}
+
+    # Primitives
+    if tp in (str,):
+        return {"type": "string"}
+    if tp in (int,):
+        return {"type": "integer"}
+    if tp in (float,):
+        return {"type": "number"}
+    if tp in (bool,):
+        return {"type": "boolean"}
+
+    # TypedDict-like
+    if _is_typed_dict(tp):
+        props: Dict[str, Any] = {}
+        req: List[str] = []
+        anns = getattr(tp, "__annotations__", {}) or {}
+        total = bool(getattr(tp, "__total__", True))
+        for k, v in anns.items():
+            props[k] = _type_to_schema(v)
+            # If total=True -> required unless Optional
+            if total and not _is_optional(v):
+                req.append(k)
+        schema: Dict[str, Any] = {"type": "object", "properties": props, "additionalProperties": False}
+        if req:
+            schema["required"] = req
+        return schema
+
+    # Dataclass-like or objects with __annotations__
+    if hasattr(tp, "__annotations__"):
+        props: Dict[str, Any] = {}
+        req: List[str] = []
+        anns = getattr(tp, "__annotations__", {}) or {}
+        for k, v in anns.items():
+            props[k] = _type_to_schema(v)
+            if not _is_optional(v):
+                req.append(k)
+        schema = {"type": "object", "properties": props}
+        if req:
+            schema["required"] = req
+        return schema
+
+    # Fallback to string
+    return {"type": "string"}
+
+def _build_parameters_schema(fn: Callable) -> Dict[str, Any]:
+    sig = inspect.signature(fn)
+    props: Dict[str, Any] = {}
+    required: List[str] = []
+    for name, param in sig.parameters.items():
+        # Skip *args/**kwargs for schema
+        if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+            continue
+        ann = param.annotation
+        props[name] = _type_to_schema(ann)
+        # Required if no default and not Optional
+        if param.default is inspect._empty and not _is_optional(ann):
+            required.append(name)
+    schema: Dict[str, Any] = {"type": "object", "properties": props, "additionalProperties": False}
+    if required:
+        schema["required"] = required
+    return schema
+
+def _build_tool_spec(
+    fn: Callable,
+    *,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    parameters: Optional[Dict[str, Any]] = None,
+    safe: bool = False,
+) -> Dict[str, Any]:
+    tname = name or fn.__name__
+    desc = description or _doc_first_line(fn) or ""
+    params_schema = parameters or _build_parameters_schema(fn)
+    return {
+        "name": tname,
+        "description": desc,
+        "parameters": params_schema,
+        "safe": bool(safe),
+        "executor": fn,
+    }
+
+def tool(_fn: Optional[Callable] = None, *, name: Optional[str] = None, description: Optional[str] = None, parameters: Optional[Dict[str, Any]] = None, safe: bool = False):
+    """
+    Decorator to register a Python function as an LLM-callable tool.
+
+    Example:
+      @zenllm.tool
+      def get_weather(city: str) -> dict:
+          "Get current weather by city."
+          ...
+
+    The wrapped function will have .__zen_tool__ with:
+      {name, description, parameters (JSON Schema), safe, executor}
+    """
+    def _wrap(fn: Callable):
+        spec = _build_tool_spec(fn, name=name, description=description, parameters=parameters, safe=safe)
+        setattr(fn, "__zen_tool__", spec)
+        return fn
+
+    if _fn is None:
+        return _wrap
+    return _wrap(_fn)
+
+def _coerce_to_tool_spec(obj: Any) -> Dict[str, Any]:
+    """
+    Accepts:
+      - a function decorated with @tool (uses __zen_tool__)
+      - any callable (derive a spec from signature)
+      - a prebuilt dict spec with keys name, description, parameters
+    Returns a normalized internal spec with executor where available.
+    """
+    if isinstance(obj, dict):
+        spec = dict(obj)
+        # Ensure minimal fields
+        if "name" not in spec:
+            raise ValueError("Tool dict must include a 'name'.")
+        if "parameters" not in spec:
+            spec["parameters"] = {"type": "object", "properties": {}, "additionalProperties": True}
+        spec.setdefault("description", "")
+        # No executor for raw dicts
+        return {"executor": None, "safe": False, **spec}
+    if callable(obj):
+        if hasattr(obj, "__zen_tool__"):
+            return getattr(obj, "__zen_tool__")
+        # Derive from signature
+        return _build_tool_spec(obj)
+    raise ValueError("Unsupported tool type; expected callable or dict spec.")
+
+def _to_openai_tool_dict(spec: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "type": "function",
+        "function": {
+            "name": spec["name"],
+            "description": spec.get("description") or "",
+            "parameters": spec.get("parameters") or {"type": "object", "properties": {}},
+        },
+    }
+
+def _prepare_tools(tools: Optional[List[Any]]) -> Tuple[List[Dict[str, Any]], Dict[str, Callable], List[Dict[str, Any]]]:
+    """
+    Returns:
+      - specs: internal normalized tool specs (with executor when available)
+      - exec_map: name -> executor (only for callable tools)
+      - request_tools: OpenAI-compatible tool list for options
+    """
+    specs: List[Dict[str, Any]] = []
+    exec_map: Dict[str, Callable] = {}
+    req: List[Dict[str, Any]] = []
+    if not tools:
+        return specs, exec_map, req
+    for t in tools:
+        spec = _coerce_to_tool_spec(t)
+        specs.append(spec)
+        if spec.get("executor"):
+            exec_map[spec["name"]] = spec["executor"]
+        req.append(_to_openai_tool_dict(spec))
+    return specs, exec_map, req
+
+def agent(
+    messages: List[Any],
+    *,
+    tools: Optional[List[Any]] = None,
+    model: str = DEFAULT_MODEL,
+    system: Optional[str] = None,
+    options: Optional[Dict[str, Any]] = None,
+    provider: Optional[str] = None,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+    fallback: Optional["FallbackConfig"] = None,
+    stream: bool = False,
+    auto_run_tools: bool = False,  # default false as requested
+):
+    """
+    High-level helper to run a tool-enabled chat.
+    - Wraps chat() and passes tool definitions via options.
+    - By default does NOT auto-execute tools (auto_run_tools=False).
+    - If auto_run_tools=True: currently not implemented end-to-end without provider tool-call parsing.
+      We will pass tool definitions and return the first assistant message.
+
+    Returns: Response or ResponseStream from chat().
+    """
+    # Normalize messages using existing helper
+    msgs = _normalize_messages_for_chat(messages)
+
+    # Prepare tools for request
+    _, _, request_tools = _prepare_tools(tools)
+
+    # Merge options with tools/tool_choice
+    opts: Dict[str, Any] = {}
+    if options:
+        opts.update(options)
+    if request_tools:
+        opts["tools"] = request_tools
+        # Let the model decide when to call
+        # Many providers accept "auto" | "none" | {"type":"function","function":{"name":...}}
+        # We default to auto, but since auto_run_tools=False, we won't execute the call client-side.
+        if "tool_choice" not in opts:
+            opts["tool_choice"] = "auto"
+
+    if auto_run_tools:
+        warnings.warn(
+            "auto_run_tools=True is not yet fully implemented; executing tools requires provider tool-call support. "
+            "Tool definitions are sent to the model, but tool execution/looping is not performed in this version."
+        )
+
+    # Delegate to core chat for now
+    return chat(
+        msgs,
+        model=model,
+        system=system,
+        stream=stream,
+        options=opts,
+        provider=provider,
+        base_url=base_url,
+        api_key=api_key,
+        fallback=fallback,
+    )
 
 # ---- Response types ----
 
