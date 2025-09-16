@@ -13,7 +13,7 @@ from .providers.openai import OpenAIProvider
 from .providers.deepseek import DeepseekProvider
 from .providers.together import TogetherProvider
 from .providers.xai import XaiProvider
-from .providers.groq import GroqProvider
+from .providers.groq import GroqProvider, GROQ_DEFAULT_BASE_URL, GROQ_API_KEY_ENV
 from .pricing import estimate_cost as _estimate_cost
 
 # ---- Providers registry and selection ----
@@ -82,44 +82,61 @@ def list_models(
 ) -> List[ModelInfo]:
     """
     List models available for a provider.
-    Currently implemented for OpenAI-compatible endpoints.
+
+    Implemented providers:
+      - OpenAI-compatible endpoints (provider: None | "openai" | "gpt" | "openai-compatible", or if base_url is provided)
+      - Groq (provider: "groq")
 
     Arguments:
-      - provider: "openai" | "gpt" | "openai-compatible" (others not yet implemented)
-      - base_url: override base URL for OpenAI-compatible endpoints (e.g. http://localhost:11434/v1)
-      - api_key: explicit API key; defaults to OPENAI_API_KEY for OpenAI-compatible
+      - provider: which provider to query
+      - base_url: override base URL (for OpenAI-compatible or Groq)
+      - api_key: explicit API key; defaults to provider-specific env var
 
     Returns:
       - List[ModelInfo]
     """
     prov_key = (provider or "").lower() if provider else None
-    is_openai_like = (base_url is not None) or (prov_key in (None, "openai", "gpt", "openai-compatible"))
 
-    if not is_openai_like:
-        # Future: add implementations for other providers.
-        raise NotImplementedError("list_models is currently implemented for OpenAI-compatible providers only.")
+    # OpenAI-compatible path (default if base_url is provided or provider is None/openai/gpt/openai-compatible)
+    if (base_url is not None) or (prov_key in (None, "openai", "gpt", "openai-compatible")):
+        url = f"{(base_url or 'https://api.openai.com/v1').rstrip('/')}/models"
+        key = api_key or os.getenv("OPENAI_API_KEY")
+        if not key:
+            raise ValueError("Missing API key for listing models. Provide api_key=... or set OPENAI_API_KEY.")
+        headers = {"Authorization": f"Bearer {key}"}
+        resp = requests.get(url, headers=headers, timeout=60)
+        resp.raise_for_status()
+        payload = resp.json()
+        items = payload.get("data") or []
 
-    url = f"{(base_url or 'https://api.openai.com/v1').rstrip('/')}/models"
-    key = api_key or os.getenv("OPENAI_API_KEY")
-    if not key:
-        raise ValueError("Missing API key for listing models. Provide api_key=... or set OPENAI_API_KEY.")
+    # Groq path
+    elif prov_key == "groq":
+        url = f"{(base_url or GROQ_DEFAULT_BASE_URL).rstrip('/')}/models"
+        key = api_key or os.getenv(GROQ_API_KEY_ENV)
+        if not key:
+            raise ValueError(f"Missing API key for Groq model listing. Provide api_key=... or set {GROQ_API_KEY_ENV}.")
+        headers = {"Authorization": f"Bearer {key}"}
+        resp = requests.get(url, headers=headers, timeout=60)
+        resp.raise_for_status()
+        payload = resp.json()
+        # Groq follows OpenAI schema ({ "data": [...] }), but be tolerant
+        items = payload.get("data") if isinstance(payload, dict) else payload
+        if items is None:
+            items = []
 
-    headers = {"Authorization": f"Bearer {key}"}
-    resp = requests.get(url, headers=headers, timeout=60)
-    resp.raise_for_status()
-    payload = resp.json()
-    items = payload.get("data") or []
+    else:
+        raise NotImplementedError("list_models is implemented for OpenAI-compatible providers and Groq.")
 
     models: List[ModelInfo] = []
     for it in items:
-        mid = it.get("id")
+        mid = it.get("id") if isinstance(it, dict) else None
         if not mid:
             continue
         models.append(ModelInfo(
             id=mid,
-            created=it.get("created"),
-            owned_by=it.get("owned_by"),
-            raw=it,
+            created=(it.get("created") if isinstance(it, dict) else None),
+            owned_by=(it.get("owned_by") if isinstance(it, dict) else None),
+            raw=(it if isinstance(it, dict) else {"id": mid}),
         ))
     return models
 
