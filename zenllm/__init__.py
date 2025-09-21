@@ -1079,6 +1079,8 @@ def generate(
     system: Optional[str] = None,
     image: Optional[Any] = None,
     images: Optional[List[Any]] = None,
+    tools: Optional[List[Dict[str, Any]]] = None,
+    tool_choice: Optional[Union[str, Dict[str, Any]]] = None,
     stream: bool = False,
     options: Optional[Dict[str, Any]] = None,
     provider: Optional[str] = None,
@@ -1091,11 +1093,20 @@ def generate(
     - prompt: str text
     - image: single image source (path/URL/bytes/file-like)
     - images: list of image sources
+    - tools: list of tool definitions in OpenAI format
+    - tool_choice: tool choice in OpenAI format ("auto", "none", or {"type": "function", "function": {"name": "..."}}
     - options: dict of tuning and passthrough
     """
     # Build a single user message
     msg = _message_from_simple("user", prompt, images if images is not None else image)
     msgs = [msg]
+
+    # Merge tools and tool_choice into options
+    options = options.copy() if options else {}
+    if tools is not None:
+        options["tools"] = tools
+    if tool_choice is not None:
+        options["tool_choice"] = tool_choice
 
     # If fallback provided or env default exists, use fallback runner
     fb = fallback or _env_default_fallback()
@@ -1145,6 +1156,8 @@ def chat(
     *,
     model: str = DEFAULT_MODEL,
     system: Optional[str] = None,
+    tools: Optional[List[Dict[str, Any]]] = None,
+    tool_choice: Optional[Union[str, Dict[str, Any]]] = None,
     stream: bool = False,
     options: Optional[Dict[str, Any]] = None,
     provider: Optional[str] = None,
@@ -1159,8 +1172,17 @@ def chat(
       - ("user"|"assistant"|"system", text[, images])
       - {"role":"user","text":"...", "images":[...]}
       - {"role":"user","parts":[...]}  # escape hatch
+    - tools: list of tool definitions in OpenAI format
+    - tool_choice: tool choice in OpenAI format ("auto", "none", or {"type": "function", "function": {"name": "..."}}
     """
     msgs = _normalize_messages_for_chat(messages)
+
+    # Merge tools and tool_choice into options
+    options = options.copy() if options else {}
+    if tools is not None:
+        options["tools"] = tools
+    if tool_choice is not None:
+        options["tool_choice"] = tool_choice
 
     fb = fallback or _env_default_fallback()
     if fb:
