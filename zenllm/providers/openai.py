@@ -163,11 +163,18 @@ class OpenAIProvider(LLMProvider):
         if not final_messages:
             raise ValueError("Messages list cannot be empty.")
 
+        tools = kwargs.pop("tools", None)
+        tool_choice = kwargs.pop("tool_choice", None)
+
         payload = {
             "model": model,
             "messages": final_messages,
             "stream": stream,
         }
+        if tools is not None:
+            payload["tools"] = tools
+        if tool_choice is not None:
+            payload["tool_choice"] = tool_choice
 
         payload.update(kwargs)
 
@@ -178,12 +185,25 @@ class OpenAIProvider(LLMProvider):
             return self._stream_response(response)
 
         data = response.json()
-        text = data.get('choices', [{}])[0].get('message', {}).get('content', "") or ""
-        finish_reason = data.get('choices', [{}])[0].get('finish_reason')
-        parts = [{"type": "text", "text": text}] if text else []
+        choices = data.get('choices', [])
+        if choices:
+            first_choice = choices[0]
+            message = first_choice.get('message', {})
+            text = message.get('content', '') or ''
+            tool_calls = message.get('tool_calls')
+            finish_reason = first_choice.get('finish_reason')
+            parts = [{"type": "text", "text": text}] if text else []
+            return {
+                "parts": parts,
+                "tool_calls": tool_calls,
+                "raw": data,
+                "finish_reason": finish_reason,
+                "usage": data.get("usage"),
+            }
         return {
-            "parts": parts,
+            "parts": [],
+            "tool_calls": None,
             "raw": data,
-            "finish_reason": finish_reason,
+            "finish_reason": None,
             "usage": data.get("usage"),
         }

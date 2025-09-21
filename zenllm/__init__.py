@@ -683,6 +683,7 @@ class Response:
         provider: Optional[str] = None,
         finish_reason: Optional[str] = None,
         usage: Optional[Dict[str, Any]] = None,
+        tool_calls: Optional[List[Dict[str, Any]]] = None,
         raw: Optional[Dict[str, Any]] = None,
     ):
         self.parts = parts or []
@@ -690,6 +691,7 @@ class Response:
         self.provider = provider
         self.finish_reason = finish_reason
         self.usage = usage
+        self.tool_calls = tool_calls
         self.raw = raw
         self._cost_cache: Optional[Dict[str, Any]] = None
 
@@ -939,6 +941,7 @@ def _run_with_fallback(
                         provider=prov_name,
                         finish_reason=result.get("finish_reason"),
                         usage=result.get("usage"),
+                        tool_calls=result.get("tool_calls"),
                         raw=raw_meta,
                     )
                 except Exception as e:
@@ -1148,6 +1151,7 @@ def generate(
         provider=prov_name,
         finish_reason=result.get("finish_reason"),
         usage=result.get("usage"),
+        tool_calls=result.get("tool_calls"),
         raw=result.get("raw"),
     )
 
@@ -1221,5 +1225,6 @@ def chat(
         provider=prov_name,
         finish_reason=result.get("finish_reason"),
         usage=result.get("usage"),
+        tool_calls=result.get("tool_calls"),
         raw=result.get("raw"),
     )

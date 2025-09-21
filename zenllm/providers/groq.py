@@ -211,7 +211,13 @@ class GroqProvider(LLMProvider):
             "user",
             "seed",
         }
+        tools = kwargs.pop("tools", None)
+        tool_choice = kwargs.pop("tool_choice", None)
         payload: Dict[str, Any] = {"model": normalized_model, "messages": payload_messages}
+        if tools is not None:
+            payload["tools"] = tools
+        if tool_choice is not None:
+            payload["tool_choice"] = tool_choice
         for k, v in list(kwargs.items()):
             if k in allowed_opts:
                 payload[k] = v
@@ -242,6 +248,7 @@ class GroqProvider(LLMProvider):
                 first = choices[0]
                 msg = first.get("message") or {}
                 txt = msg.get("content")
+                tool_calls = msg.get("tool_calls")
                 finish_reason = first.get("finish_reason")
                 if txt:
                     parts.append({"type": "text", "text": txt})
@@ -252,6 +259,7 @@ class GroqProvider(LLMProvider):
 
         return {
             "parts": parts,
+            "tool_calls": tool_calls,
             "finish_reason": finish_reason,
             "usage": usage,
             "raw": data,

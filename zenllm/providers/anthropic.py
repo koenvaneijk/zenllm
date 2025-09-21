@@ -152,6 +152,9 @@ class AnthropicProvider(LLMProvider):
             "content-type": "application/json"
         }
 
+        tools = kwargs.pop("tools", None)
+        tool_choice = kwargs.pop("tool_choice", None)
+
         payload = {
             "model": model or self.DEFAULT_MODEL,
             "messages": self._to_anthropic_messages(messages),
@@ -160,6 +163,33 @@ class AnthropicProvider(LLMProvider):
 
         if system_prompt:
             payload["system"] = system_prompt
+
+        if tools:
+            anthropic_tools = []
+            for tool in tools:
+                if tool.get("type") == "function":
+                    func = tool.get("function", {})
+                    name = func.get("name")
+                    description = func.get("description", "")
+                    parameters = func.get("parameters", {})
+                    # Map OpenAI parameters to Anthropic input_schema
+                    input_schema = parameters
+                    anthropic_tools.append({
+                        "name": name,
+                        "description": description,
+                        "input_schema": input_schema,
+                    })
+            payload["tools"] = anthropic_tools
+
+        if tool_choice:
+            if tool_choice == "auto":
+                payload["tool_choice"] = {"type": "auto"}
+            elif tool_choice == "none":
+                payload["tool_choice"] = {"type": "any"}
+            elif isinstance(tool_choice, dict) and tool_choice.get("type") == "function":
+                func = tool_choice.get("function", {})
+                name = func.get("name")
+                payload["tool_choice"] = {"type": "tool", "name": name}
 
         payload.update(kwargs)
 
@@ -172,12 +202,29 @@ class AnthropicProvider(LLMProvider):
         data = response.json()
         content_blocks = data.get('content') or []
         parts: List[Dict[str, Any]] = []
+        tool_calls = None
         for b in content_blocks:
             if b.get("type") == "text":
                 parts.append({"type": "text", "text": b.get("text", "")})
+            elif b.get("type") == "tool_use":
+                # Extract tool call
+                if tool_calls is None:
+                    tool_calls = []
+                tool_calls.append({
+                    "id": b.get("id"),
+                    "type": "function",
+                    "function": {
+                        "name": b.get("name"),
+                        "arguments": b.get("input", {}),  # Anthropic uses 'input' as dict
+                    },
+                })
+        finish_reason = data.get("stop_reason")
+        if tool_calls:
+            finish_reason = "tool_calls"
         return {
             "parts": parts,
+            "tool_calls": tool_calls,
             "raw": data,
-            "finish_reason": data.get("stop_reason"),
+            "finish_reason": finish_reason,
             "usage": data.get("usage"),
         }

@@ -165,6 +165,9 @@ class GoogleProvider(LLMProvider):
         if system_prompt:
             payload["system_instruction"] = {"parts": [{"text": system_prompt}]}
 
+        tools = kwargs.pop("tools", None)
+        tool_choice = kwargs.pop("tool_choice", None)
+
         # generationConfig options
         generation_config = {}
         # Map common names (temperature, top_p, top_k, max_tokens) to Gemini (temperature, topP, topK, maxOutputTokens)
@@ -180,6 +183,29 @@ class GoogleProvider(LLMProvider):
             generation_config["topK"] = kwargs.pop("topK")
         if generation_config:
             payload["generationConfig"] = generation_config
+
+        if tools:
+            # Map OpenAI tools to Gemini tools format
+            gemini_tools = []
+            for tool in tools:
+                if tool.get("type") == "function":
+                    func = tool.get("function", {})
+                    name = func.get("name")
+                    description = func.get("description", "")
+                    parameters = func.get("parameters", {})
+                    gemini_tools.append({
+                        "function_declarations": [{
+                            "name": name,
+                            "description": description,
+                            "parameters": parameters,
+                        }]
+                    })
+            payload["tools"] = gemini_tools
+
+        # tool_choice not directly supported in Gemini; ignore or approximate with safety settings if needed
+        # For now, log a warning if tool_choice is specified
+        if tool_choice and tool_choice != "none":
+            print("Warning: tool_choice not directly supported in Gemini; using default auto behavior.")
 
         payload.update(kwargs)
 
@@ -198,14 +224,40 @@ class GoogleProvider(LLMProvider):
             return self._stream_response(response)
 
         data = response.json()
-        candidate = (data.get('candidates') or [{}])[0]
-        finish_reason = candidate.get('finishReason')
-        content = candidate.get('content') or {}
-        parts = content.get('parts') or []
-        norm_parts = self._from_gemini_response_parts(parts)
+        candidates = data.get('candidates', [])
+        if candidates:
+            candidate = candidates[0]
+            finish_reason = candidate.get('finishReason')
+            content = candidate.get('content') or {}
+            parts = content.get('parts') or []
+            norm_parts = self._from_gemini_response_parts(parts)
+            tool_calls = None
+            for p in parts:
+                if 'functionCall' in p or 'function_call' in p:
+                    fc = p.get('functionCall') or p.get('function_call') or {}
+                    if tool_calls is None:
+                        tool_calls = []
+                    tool_calls.append({
+                        "id": fc.get("id", "call_1"),
+                        "type": "function",
+                        "function": {
+                            "name": fc.get("name"),
+                            "arguments": fc.get("args", {}),
+                        },
+                    })
+            if tool_calls:
+                finish_reason = "tool_calls"
+            return {
+                "parts": norm_parts,
+                "tool_calls": tool_calls,
+                "raw": data,
+                "finish_reason": finish_reason,
+                "usage": data.get("usageMetadata"),
+            }
         return {
-            "parts": norm_parts,
+            "parts": [],
+            "tool_calls": None,
             "raw": data,
-            "finish_reason": finish_reason,
+            "finish_reason": None,
             "usage": data.get("usageMetadata"),
         }

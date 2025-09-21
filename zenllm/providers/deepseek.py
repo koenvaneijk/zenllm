@@ -123,11 +123,17 @@ class DeepseekProvider(LLMProvider):
             final_messages.append({"role": "system", "content": system_prompt})
         final_messages.extend(self._to_openai_messages(messages))
 
+        tools = kwargs.pop("tools", None)
+        tool_choice = kwargs.pop("tool_choice", None)
         payload = {
             "model": model or self.DEFAULT_MODEL,
             "messages": final_messages,
             "stream": stream,
         }
+        if tools is not None:
+            payload["tools"] = tools
+        if tool_choice is not None:
+            payload["tool_choice"] = tool_choice
         
         payload.update(kwargs)
 
@@ -138,14 +144,25 @@ class DeepseekProvider(LLMProvider):
             return self._stream_response(response)
         
         data = response.json()
-        choice = (data.get('choices') or [{}])[0]
-        msg = choice.get('message', {})
-        text = msg.get('content', "") or ""
-        finish_reason = choice.get('finish_reason')
-        parts = [{"type": "text", "text": text}] if text else []
+        choices = data.get('choices', [])
+        if choices:
+            choice = choices[0]
+            msg = choice.get('message', {})
+            text = msg.get('content', '') or ''
+            tool_calls = msg.get('tool_calls')
+            finish_reason = choice.get('finish_reason')
+            parts = [{"type": "text", "text": text}] if text else []
+            return {
+                "parts": parts,
+                "tool_calls": tool_calls,
+                "raw": data,
+                "finish_reason": finish_reason,
+                "usage": data.get("usage"),
+            }
         return {
-            "parts": parts,
+            "parts": [],
+            "tool_calls": None,
             "raw": data,
-            "finish_reason": finish_reason,
+            "finish_reason": None,
             "usage": data.get("usage"),
         }
