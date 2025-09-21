@@ -80,6 +80,28 @@ resp = llm.chat(
 print(resp.text)
 ```
 
+### Tool calling (OpenAI-style)
+
+```python
+import zenllm as llm
+
+# Define a tool (or pass raw dict spec)
+@llm.tool(description="Get current weather by city")
+def get_weather(city: str) -> dict:
+    """Return current weather for a city."""
+    # Simulate API call
+    return {"temp_c": 21.5, "condition": "sunny"}
+
+# Use in chat or generate
+resp = llm.chat(
+    [("user", "What's the weather in Paris?")],
+    tools=[get_weather],  # or [{"type": "function", "function": {"name": "get_weather", ...}}]
+    tool_choice="auto",   # "auto", "none", or {"type": "function", "function": {"name": "get_weather"}}
+    model="gpt-4o",
+)
+print(resp.text)  # Model may respond with tool call instructions
+```
+
 ### Streaming with typed events
 
 ```python
@@ -317,8 +339,8 @@ The method returns a dictionary with `input` and `output` prices per million tok
 
 ## 🧱 API overview
 
-- generate(prompt=None, *, model=..., system=None, image=None, images=None, stream=False, options=None, provider=None, base_url=None, api_key=None, fallback=None)
-- chat(messages, *, model=..., system=None, stream=False, options=None, provider=None, base_url=None, api_key=None, fallback=None)
+- generate(prompt=None, *, model=..., system=None, image=None, images=None, tools=None, tool_choice=None, stream=False, options=None, provider=None, base_url=None, api_key=None, fallback=None)
+- chat(messages, *, model=..., system=None, tools=None, tool_choice=None, stream=False, options=None, provider=None, base_url=None, api_key=None, fallback=None)
 - agent(messages, *, tools=None, auto_run_tools=False, model=..., system=None, stream=False, options=None, provider=None, base_url=None, api_key=None, fallback=None)
 
 Inputs:
@@ -330,8 +352,10 @@ Inputs:
   - ("user"|"assistant"|"system", text[, images])
   - {"role":"user","text":"...", "images":[...]}
   - {"role":"user","parts":[...]}  // escape hatch for experts
+- tools: list of tool definitions in OpenAI format (e.g., [{"type": "function", "function": {"name": "...", "description": "...", "parameters": {...}}}]); also accepts decorated functions from @zenllm.tool or raw dict specs
+- tool_choice: tool choice in OpenAI format ("auto", "none", or {"type": "function", "function": {"name": "specific_tool"}})
 - options: normalized tuning and passthrough, e.g. {"temperature": 0.7, "max_tokens": 512}.
-  These are mapped per provider where needed.
+  These are mapped per provider where needed. Tools/tool_choice can also be passed here for finer control.
 
 Helpers (escape hatch):
 - zenllm.text(value) -> {"type":"text","text": "..."}
@@ -435,8 +459,8 @@ resp = llm.agent(
 ```
 
 Tip:
-- You can also pass tools directly to chat() by building the OpenAI-style schema yourself:
-  options={"tools": [{"type": "function", "function": {...}}], "tool_choice": "auto"}
+- Tools and tool_choice can now be passed directly to generate() and chat() for convenience.
+- For more advanced usage, pass via options={"tools": [...], "tool_choice": "..."}.
 
 Roadmap:
 - Streaming tool-call events, structured JSON output helpers, and an opt-in autorun loop will land in subsequent updates.
