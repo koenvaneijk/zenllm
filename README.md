@@ -106,17 +106,59 @@ print(resp.text)  # Model may respond with tool call instructions
 
 ZenLLM automatically derives the tool schema from the function signature, type hints, and docstring. For more control, pass raw dict specs.
 
+#### Handling tool calls (execution loop)
+
+After the model generates tool calls (accessible via `resp.tool_calls`), you can execute them and feed the results back to the LLM for a final response. Use `agent()` for automatic handling, or implement manually for custom logic.
+
 ```python
 import zenllm as llm
+import json
 
-# Use in generate or chat
-resp = llm.generate(
-    "What's the weather in Paris?",
+def get_weather(city: str) -> dict:
+    """Get current weather for a city.
+    
+    Args:
+        city: The city name.
+    """
+    # Simulate API call
+    return {"temp_c": 21.5, "condition": "sunny"}
+
+# Use agent() for automatic tool execution loop
+resp = llm.agent(
+    [("user", "What's the weather in Paris?")],
     tools=[get_weather],
-    tool_choice="auto",
     model="gpt-4o",
+    auto_run_tools=True,  # Executes tools and feeds results back to the model
 )
 print(resp.text)
+# Output: "The current weather in Paris is sunny with a temperature of 21.5°C."
+
+# Manually handling tool calls (for custom loops)
+messages = [("user", "What's the weather in Paris?")]
+resp = llm.chat(messages, tools=[get_weather], tool_choice="auto", model="gpt-4o")
+print("Tool calls:", resp.tool_calls)  # e.g., [{'id': 'call_abc', 'function': {'name': 'get_weather', 'arguments': '{"city":"Paris"}'}, 'type': 'function'}]
+
+if resp.tool_calls:
+    # Execute tools
+    tool_results = []
+    for call in resp.tool_calls:
+        func_name = call["function"]["name"]
+        args_str = call["function"]["arguments"]
+        args = json.loads(args_str)
+        # Assume we have a map of name to function
+        if func_name == "get_weather":
+            result = get_weather(**args)
+            tool_results.append({
+                "tool_call_id": call["id"],
+                "role": "tool",
+                "content": json.dumps(result),
+            })
+    # Append tool calls and results to messages
+    messages.append({"role": "assistant", "tool_calls": resp.tool_calls})
+    messages.extend(tool_results)
+    # Call again for final response
+    final_resp = llm.chat(messages, tools=[get_weather], model="gpt-4o")
+    print("Final response:", final_resp.text)
 ```
 
 #### Defining tools via Python functions
@@ -207,46 +249,6 @@ Focus on writing clear, well-typed Python functions. ZenLLM handles schema gener
   Iterate functions by testing in the CLI or with `chat()`/`generate()`.  
   For advanced workflows, use `agent()` (future autorun support planned).
 
-#### Advanced: Raw schema definitions
-
-For cases needing more control (e.g., complex nested schemas not easily expressed in Python types), pass raw dict specs directly in the `tools` list. The schema follows OpenAI's format:
-
-| Field      | Description |
-|------------|-------------|
-| `type`     | Always `"function"` |
-| `function` | Object with `name`, `description`, and `parameters` (JSON schema) |
-| `strict`   | Boolean to enforce strict parameter validation (optional, defaults to true where supported) |
-
-Example raw spec for `get_weather`:
-
-```json
-{
-    "type": "function",
-    "function": {
-        "name": "get_weather",
-        "description": "Retrieves current weather for the given location.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "location": {
-                    "type": "string",
-                    "description": "City and country e.g. Bogotá, Colombia"
-                },
-                "units": {
-                    "type": "string",
-                    "enum": ["celsius", "fahrenheit"],
-                    "description": "Units the temperature will be returned in."
-                }
-            },
-            "required": ["location"],
-            "additionalProperties": false
-        }
-    },
-    "strict": true
-}
-```
-
-Raw specs allow rich JSON schema features like nested objects, arrays, and unions. However, they lack the safety of Python functions—no type checking or autocompletion.
 
 ### Streaming with typed events
 
