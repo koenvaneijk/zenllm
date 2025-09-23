@@ -102,6 +102,30 @@ resp = llm.chat(
 print(resp.text)  # Model may respond with tool call instructions
 ```
 
+You can also pass plain Python functions without the `@tool` decorator; ZenLLM will automatically derive the tool schema from the function signature, type hints, and docstring.
+
+```python
+import zenllm as llm
+
+def get_weather(city: str) -> dict:
+    """Get current weather for a city.
+    
+    Args:
+        city: The city name.
+    """
+    # Simulate API call
+    return {"temp_c": 21.5, "condition": "sunny"}
+
+# Use in generate or chat
+resp = llm.generate(
+    "What's the weather in Paris?",
+    tools=[get_weather],
+    tool_choice="auto",
+    model="gpt-4o",
+)
+print(resp.text)
+```
+
 ### Streaming with typed events
 
 ```python
