@@ -123,6 +123,10 @@ print(resp.text)
 
 Tools can be set in the `tools` parameter of each API request (to `chat()`, `generate()`, or `agent()`). The preferred way is to define plain Python functions—ZenLLM automatically derives the OpenAI-compatible tool schema from the function's signature, type hints, and docstring. This approach is simple, type-safe, and leverages your IDE's autocompletion and linting.
 
+##### Structuring your functions
+
+To get the best results, structure your functions with clear signatures, type hints, and docstrings. ZenLLM uses these to generate accurate schemas that help the model understand when and how to call your tools.
+
 For example:
 
 ```python
@@ -178,6 +182,31 @@ def simple_calc(a: int, b: int) -> int:
     return a + b
 ```
 
+##### Best practices for structuring functions
+
+Focus on writing clear, well-typed Python functions. ZenLLM handles schema generation, so prioritize readable code over manual JSON. Here are key guidelines to structure your functions effectively:
+
+- **Write clear and detailed function names, parameter descriptions, and instructions.**  
+  Use descriptive names and docstrings. Explicitly describe the purpose, each parameter's format, and output in the docstring's first line and Args: section.  
+  Use the system prompt to guide when (and when not) to call the function—tell the model exactly what to do.  
+  Include examples and edge cases in docstrings if needed, but note that this may impact reasoning models' performance.
+
+- **Apply software engineering best practices.**  
+  Make functions obvious and intuitive (principle of least surprise).  
+  Use type hints with enums and structures to prevent invalid inputs (e.g., prefer `def toggle_light(state: bool):` over separate on/off params).  
+  Pass the intern test: Can someone use the function correctly based only on its signature and docstring? Add clarifications if not.
+
+- **Offload the burden from the model and use code where possible.**  
+  Avoid parameters for known values—compute them in code (e.g., no `order_id` param if it's from context; use `submit_refund()` with no args).  
+  Combine sequential functions into one (e.g., merge `query_location` and `mark_location` if always paired).
+
+- **Keep the number of tools small for higher accuracy.**  
+  Test with varying tool counts. Aim for <20 tools per call to maintain model performance.
+
+- **Leverage ZenLLM resources.**  
+  Iterate functions by testing in the CLI or with `chat()`/`generate()`.  
+  For advanced workflows, use `agent()` (future autorun support planned).
+
 #### Advanced: Raw schema definitions
 
 For cases needing more control (e.g., complex nested schemas not easily expressed in Python types), pass raw dict specs directly in the `tools` list. The schema follows OpenAI's format:
@@ -218,31 +247,6 @@ Example raw spec for `get_weather`:
 ```
 
 Raw specs allow rich JSON schema features like nested objects, arrays, and unions. However, they lack the safety of Python functions—no type checking or autocompletion.
-
-#### Best practices for defining tools
-
-Focus on writing clear, well-typed Python functions. ZenLLM handles schema generation, so prioritize readable code over manual JSON.
-
-- **Write clear and detailed function names, parameter descriptions, and instructions.**  
-  Use descriptive names and docstrings. Explicitly describe the purpose, each parameter's format, and output.  
-  Use the system prompt to guide when (and when not) to call the function. Tell the model exactly what to do.  
-  Include examples and edge cases in docstrings if needed, but note that this may impact reasoning models' performance.
-
-- **Apply software engineering best practices.**  
-  Make functions obvious and intuitive (principle of least surprise).  
-  Use type hints with enums and structures to prevent invalid inputs (e.g., prefer `def toggle_light(state: bool):` over separate on/off params).  
-  Pass the intern test: Can someone use the function correctly based only on its signature and docstring? Add clarifications if not.
-
-- **Offload the burden from the model and use code where possible.**  
-  Avoid parameters for known values—compute them in code (e.g., no `order_id` param if it's from context; use `submit_refund()` with no args).  
-  Combine sequential functions into one (e.g., merge `query_location` and `mark_location` if always paired).
-
-- **Keep the number of tools small for higher accuracy.**  
-  Test with varying tool counts. Aim for <20 tools per call.
-
-- **Leverage ZenLLM resources.**  
-  Iterate functions by testing in the CLI or with `chat()`/`generate()`.  
-  For advanced workflows, use `agent()` (future autorun support planned).
 
 ### Streaming with typed events
 
