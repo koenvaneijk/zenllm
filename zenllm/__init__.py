@@ -500,14 +500,32 @@ def _type_to_schema(tp: Any) -> Dict[str, Any]:
 
 def _build_parameters_schema(fn: Callable) -> Dict[str, Any]:
     sig = inspect.signature(fn)
+    docstring = inspect.getdoc(fn) or ""
     props: Dict[str, Any] = {}
     required: List[str] = []
+
+    # Parse docstring for parameter descriptions (inspired by common formats like Args:)
+    param_descriptions = {}
+    if docstring:
+        doc_lines = docstring.strip().split('\n')
+        in_args_section = False
+        for line in doc_lines[1:]:  # Skip first line (tool description)
+            stripped_line = line.strip()
+            if stripped_line.startswith("Args:"):
+                in_args_section = True
+                continue
+            if in_args_section and ":" in stripped_line and not stripped_line.startswith("Returns:"):
+                param_name, desc = stripped_line.split(":", 1)
+                param_descriptions[param_name.strip()] = desc.strip()
+
     for name, param in sig.parameters.items():
         # Skip *args/**kwargs for schema
         if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
             continue
         ann = param.annotation
-        props[name] = _type_to_schema(ann)
+        prop_schema = _type_to_schema(ann)
+        prop_schema["description"] = param_descriptions.get(name, "")
+        props[name] = prop_schema
         # Required if no default and not Optional
         if param.default is inspect._empty and not _is_optional(ann):
             required.append(name)
@@ -1082,7 +1100,7 @@ def generate(
     system: Optional[str] = None,
     image: Optional[Any] = None,
     images: Optional[List[Any]] = None,
-    tools: Optional[List[Dict[str, Any]]] = None,
+    tools: Optional[List[Union[Callable, Dict[str, Any]]]] = None,
     tool_choice: Optional[Union[str, Dict[str, Any]]] = None,
     stream: bool = False,
     options: Optional[Dict[str, Any]] = None,
@@ -1096,7 +1114,7 @@ def generate(
     - prompt: str text
     - image: single image source (path/URL/bytes/file-like)
     - images: list of image sources
-    - tools: list of tool definitions in OpenAI format
+    - tools: list of tool definitions (OpenAI-compatible dicts) or Python callables (auto-converted to tool schemas via signature/docstring introspection)
     - tool_choice: tool choice in OpenAI format ("auto", "none", or {"type": "function", "function": {"name": "..."}}
     - options: dict of tuning and passthrough
     """
@@ -1104,10 +1122,13 @@ def generate(
     msg = _message_from_simple("user", prompt, images if images is not None else image)
     msgs = [msg]
 
+    # Prepare tools (handles callables -> specs)
+    _, _, request_tools = _prepare_tools(tools)
+
     # Merge tools and tool_choice into options
     options = options.copy() if options else {}
-    if tools is not None:
-        options["tools"] = tools
+    if request_tools:
+        options["tools"] = request_tools
     if tool_choice is not None:
         options["tool_choice"] = tool_choice
 
@@ -1160,7 +1181,7 @@ def chat(
     *,
     model: str = DEFAULT_MODEL,
     system: Optional[str] = None,
-    tools: Optional[List[Dict[str, Any]]] = None,
+    tools: Optional[List[Union[Callable, Dict[str, Any]]]] = None,
     tool_choice: Optional[Union[str, Dict[str, Any]]] = None,
     stream: bool = False,
     options: Optional[Dict[str, Any]] = None,
@@ -1176,15 +1197,18 @@ def chat(
       - ("user"|"assistant"|"system", text[, images])
       - {"role":"user","text":"...", "images":[...]}
       - {"role":"user","parts":[...]}  # escape hatch
-    - tools: list of tool definitions in OpenAI format
+    - tools: list of tool definitions (OpenAI-compatible dicts) or Python callables (auto-converted to tool schemas via signature/docstring introspection)
     - tool_choice: tool choice in OpenAI format ("auto", "none", or {"type": "function", "function": {"name": "..."}}
     """
     msgs = _normalize_messages_for_chat(messages)
 
+    # Prepare tools (handles callables -> specs)
+    _, _, request_tools = _prepare_tools(tools)
+
     # Merge tools and tool_choice into options
     options = options.copy() if options else {}
-    if tools is not None:
-        options["tools"] = tools
+    if request_tools:
+        options["tools"] = request_tools
     if tool_choice is not None:
         options["tool_choice"] = tool_choice
 
