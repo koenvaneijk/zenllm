@@ -126,6 +126,73 @@ resp = llm.generate(
 print(resp.text)
 ```
 
+#### Defining tools
+
+Tools can be set in the `tools` parameter of each API request (to `chat()`, `generate()`, or `agent()`). A tool is defined by its schema, which informs the model what it does and what input arguments it expects. A tool definition has the following properties:
+
+| Field      | Description |
+|------------|-------------|
+| `type`     | This should always be `function` |
+| `name`     | The tool's name (e.g., `get_weather`) |
+| `description` | Details on when and how to use the tool |
+| `parameters` | JSON schema defining the tool's input arguments |
+| `strict`   | Whether to enforce strict mode for the tool call |
+
+Here is an example tool definition for a `get_weather` tool:
+
+```json
+{
+    "type": "function",
+    "name": "get_weather",
+    "description": "Retrieves current weather for the given location.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "location": {
+                "type": "string",
+                "description": "City and country e.g. Bogotá, Colombia"
+            },
+            "units": {
+                "type": "string",
+                "enum": ["celsius", "fahrenheit"],
+                "description": "Units the temperature will be returned in."
+            }
+        },
+        "required": ["location", "units"],
+        "additionalProperties": false
+    },
+    "strict": true
+}
+```
+
+Because the parameters are defined by a JSON schema, you can leverage many of its rich features like property types, enums, descriptions, nested objects, and recursive objects.
+
+You can pass this raw dict directly in the `tools` list. For simpler cases, use Python functions (with or without `@llm.tool`) and let ZenLLM derive the schema automatically from type hints and docstrings.
+
+#### Best practices for defining tools
+
+- **Write clear and detailed tool names, parameter descriptions, and instructions.**  
+  Explicitly describe the purpose of the tool and each parameter (and its format), and what the output represents.  
+  Use the system prompt to describe when (and when not) to use each tool. Generally, tell the model exactly what to do.  
+  Include examples and edge cases, especially to rectify any recurring failures. (Note: Adding examples may hurt performance for reasoning models.)
+
+- **Apply software engineering best practices.**  
+  Make the tools obvious and intuitive (principle of least surprise).  
+  Use enums and object structure to make invalid states unrepresentable (e.g., avoid `toggle_light(on: bool, off: bool)` which allows invalid calls).  
+  Pass the intern test: Can an intern/human correctly use the tool given nothing but what you provided the model? (If not, what questions do they ask? Add the answers to the prompt.)
+
+- **Offload the burden from the model and use code where possible.**  
+  Don't make the model fill arguments you already know. For example, if you already have an `order_id` based on a previous menu, don't have an `order_id` param—instead, have no params for `submit_refund()` and pass the `order_id` with code.  
+  Combine tools that are always called in sequence. For example, if you always call `mark_location()` after `query_location()`, just move the marking logic into the query tool call.
+
+- **Keep the number of tools small for higher accuracy.**  
+  Evaluate your performance with different numbers of tools.  
+  Aim for fewer than 20 tools at any one time, though this is just a soft suggestion.
+
+- **Leverage ZenLLM resources.**  
+  Generate and iterate on tool schemas using the interactive CLI or by testing with `chat()`/`generate()`.  
+  For complex tool calling, consider using the `agent()` function with future autorun support.
+
 ### Streaming with typed events
 
 ```python
