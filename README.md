@@ -85,10 +85,12 @@ print(resp.text)
 ```python
 import zenllm as llm
 
-# Define a tool (or pass raw dict spec)
-@llm.tool(description="Get current weather by city")
 def get_weather(city: str) -> dict:
-    """Return current weather for a city."""
+    """Get current weather for a city.
+    
+    Args:
+        city: The city name.
+    """
     # Simulate API call
     return {"temp_c": 21.5, "condition": "sunny"}
 
@@ -102,19 +104,10 @@ resp = llm.chat(
 print(resp.text)  # Model may respond with tool call instructions
 ```
 
-You can also pass plain Python functions without the `@tool` decorator; ZenLLM will automatically derive the tool schema from the function signature, type hints, and docstring.
+ZenLLM automatically derives the tool schema from the function signature, type hints, and docstring. For more control, pass raw dict specs.
 
 ```python
 import zenllm as llm
-
-def get_weather(city: str) -> dict:
-    """Get current weather for a city.
-    
-    Args:
-        city: The city name.
-    """
-    # Simulate API call
-    return {"temp_c": 21.5, "condition": "sunny"}
 
 # Use in generate or chat
 resp = llm.generate(
@@ -126,72 +119,130 @@ resp = llm.generate(
 print(resp.text)
 ```
 
-#### Defining tools
+#### Defining tools via Python functions
 
-Tools can be set in the `tools` parameter of each API request (to `chat()`, `generate()`, or `agent()`). A tool is defined by its schema, which informs the model what it does and what input arguments it expects. A tool definition has the following properties:
+Tools can be set in the `tools` parameter of each API request (to `chat()`, `generate()`, or `agent()`). The preferred way is to define plain Python functions—ZenLLM automatically derives the OpenAI-compatible tool schema from the function's signature, type hints, and docstring. This approach is simple, type-safe, and leverages your IDE's autocompletion and linting.
+
+For example:
+
+```python
+from enum import Enum
+from typing import Dict, Optional
+import zenllm as llm
+
+class TempUnit(str, Enum):
+    CELSIUS = "celsius"
+    FAHRENHEIT = "fahrenheit"
+
+def get_weather(location: str, units: Optional[TempUnit] = TempUnit.CELSIUS) -> Dict[str, Any]:
+    """Retrieves current weather for the given location.
+    
+    Args:
+        location: City and country e.g. Bogotá, Colombia
+        units: Units the temperature will be returned in.
+    """
+    # Simulate API call
+    temp = 21.5 if units == TempUnit.CELSIUS else 70.7
+    return {"temp": temp, "condition": "sunny"}
+
+# Use in chat or generate
+resp = llm.chat(
+    [("user", "What's the weather in Paris?")],
+    tools=[get_weather],
+    tool_choice="auto",
+    model="gpt-4o",
+)
+print(resp.text)
+```
+
+ZenLLM inspects the function to generate a schema like this:
+
+- **name**: Derived from `fn.__name__` (e.g., "get_weather")
+- **description**: First line of the docstring
+- **parameters**: JSON schema from type hints (e.g., enums become enum arrays, Optional types are not required) and docstring Args: sections for descriptions
+- **strict**: Defaults to `true` for better validation (enforced where supported by the provider)
+
+This automatic derivation supports:
+- Primitive types (str → "string", int → "integer", float → "number", bool → "boolean")
+- Collections (List[T] → array of T, Dict[str, T] → object with additionalProperties T)
+- Enums (via `Enum` subclasses)
+- Nested structures (dataclasses, TypedDict)
+- Optionals (Union[T, None] or Optional[T] → not required, with default if provided)
+- Docstring parsing for parameter descriptions (look for "Args:" sections)
+
+For even simpler cases, a basic function with a docstring works:
+
+```python
+def simple_calc(a: int, b: int) -> int:
+    """Add two numbers."""
+    return a + b
+```
+
+#### Advanced: Raw schema definitions
+
+For cases needing more control (e.g., complex nested schemas not easily expressed in Python types), pass raw dict specs directly in the `tools` list. The schema follows OpenAI's format:
 
 | Field      | Description |
 |------------|-------------|
-| `type`     | This should always be `function` |
-| `name`     | The tool's name (e.g., `get_weather`) |
-| `description` | Details on when and how to use the tool |
-| `parameters` | JSON schema defining the tool's input arguments |
-| `strict`   | Whether to enforce strict mode for the tool call |
+| `type`     | Always `"function"` |
+| `function` | Object with `name`, `description`, and `parameters` (JSON schema) |
+| `strict`   | Boolean to enforce strict parameter validation (optional, defaults to true where supported) |
 
-Here is an example tool definition for a `get_weather` tool:
+Example raw spec for `get_weather`:
 
 ```json
 {
     "type": "function",
-    "name": "get_weather",
-    "description": "Retrieves current weather for the given location.",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "location": {
-                "type": "string",
-                "description": "City and country e.g. Bogotá, Colombia"
+    "function": {
+        "name": "get_weather",
+        "description": "Retrieves current weather for the given location.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "location": {
+                    "type": "string",
+                    "description": "City and country e.g. Bogotá, Colombia"
+                },
+                "units": {
+                    "type": "string",
+                    "enum": ["celsius", "fahrenheit"],
+                    "description": "Units the temperature will be returned in."
+                }
             },
-            "units": {
-                "type": "string",
-                "enum": ["celsius", "fahrenheit"],
-                "description": "Units the temperature will be returned in."
-            }
-        },
-        "required": ["location", "units"],
-        "additionalProperties": false
+            "required": ["location"],
+            "additionalProperties": false
+        }
     },
     "strict": true
 }
 ```
 
-Because the parameters are defined by a JSON schema, you can leverage many of its rich features like property types, enums, descriptions, nested objects, and recursive objects.
-
-You can pass this raw dict directly in the `tools` list. For simpler cases, use Python functions (with or without `@llm.tool`) and let ZenLLM derive the schema automatically from type hints and docstrings.
+Raw specs allow rich JSON schema features like nested objects, arrays, and unions. However, they lack the safety of Python functions—no type checking or autocompletion.
 
 #### Best practices for defining tools
 
-- **Write clear and detailed tool names, parameter descriptions, and instructions.**  
-  Explicitly describe the purpose of the tool and each parameter (and its format), and what the output represents.  
-  Use the system prompt to describe when (and when not) to use each tool. Generally, tell the model exactly what to do.  
-  Include examples and edge cases, especially to rectify any recurring failures. (Note: Adding examples may hurt performance for reasoning models.)
+Focus on writing clear, well-typed Python functions. ZenLLM handles schema generation, so prioritize readable code over manual JSON.
+
+- **Write clear and detailed function names, parameter descriptions, and instructions.**  
+  Use descriptive names and docstrings. Explicitly describe the purpose, each parameter's format, and output.  
+  Use the system prompt to guide when (and when not) to call the function. Tell the model exactly what to do.  
+  Include examples and edge cases in docstrings if needed, but note that this may impact reasoning models' performance.
 
 - **Apply software engineering best practices.**  
-  Make the tools obvious and intuitive (principle of least surprise).  
-  Use enums and object structure to make invalid states unrepresentable (e.g., avoid `toggle_light(on: bool, off: bool)` which allows invalid calls).  
-  Pass the intern test: Can an intern/human correctly use the tool given nothing but what you provided the model? (If not, what questions do they ask? Add the answers to the prompt.)
+  Make functions obvious and intuitive (principle of least surprise).  
+  Use type hints with enums and structures to prevent invalid inputs (e.g., prefer `def toggle_light(state: bool):` over separate on/off params).  
+  Pass the intern test: Can someone use the function correctly based only on its signature and docstring? Add clarifications if not.
 
 - **Offload the burden from the model and use code where possible.**  
-  Don't make the model fill arguments you already know. For example, if you already have an `order_id` based on a previous menu, don't have an `order_id` param—instead, have no params for `submit_refund()` and pass the `order_id` with code.  
-  Combine tools that are always called in sequence. For example, if you always call `mark_location()` after `query_location()`, just move the marking logic into the query tool call.
+  Avoid parameters for known values—compute them in code (e.g., no `order_id` param if it's from context; use `submit_refund()` with no args).  
+  Combine sequential functions into one (e.g., merge `query_location` and `mark_location` if always paired).
 
 - **Keep the number of tools small for higher accuracy.**  
-  Evaluate your performance with different numbers of tools.  
-  Aim for fewer than 20 tools at any one time, though this is just a soft suggestion.
+  Test with varying tool counts. Aim for <20 tools per call.
 
 - **Leverage ZenLLM resources.**  
-  Generate and iterate on tool schemas using the interactive CLI or by testing with `chat()`/`generate()`.  
-  For complex tool calling, consider using the `agent()` function with future autorun support.
+  Iterate functions by testing in the CLI or with `chat()`/`generate()`.  
+  For advanced workflows, use `agent()` (future autorun support planned).
 
 ### Streaming with typed events
 
@@ -494,9 +545,9 @@ Notes:
 - Some third-party endpoints don’t support vision. If you pass images to an unsupported model, the upstream provider may return an error.
 - DeepSeek and Together may not accept image URLs; prefer path/bytes/file for images with those providers.
 
-## 🧪 Experimental: @tool decorator and agent() (preview)
+## 🧪 Experimental: agent() (preview)
 
-Define Python functions as LLM-callable tools with a simple decorator, and pass them to the high-level agent() helper. Autorun of tools is disabled by default.
+Pass plain Python functions or raw dict specs as tools to the high-level agent() helper. Autorun of tools is disabled by default.
 
 Notes:
 - Current preview forwards tool definitions to the provider using an OpenAI-style schema. Automatic execution of tools on the client side (autorun loop) is intentionally off by default and will be expanded in a future release.
@@ -506,9 +557,12 @@ Example
 ```python
 import zenllm as llm
 
-@llm.tool(description="Get current weather by city")
 def get_weather(city: str):
-    """Return current weather for a city."""
+    """Return current weather for a city.
+    
+    Args:
+        city: The city name.
+    """
     # Implement your logic here (e.g., call a REST API)
     return {"temp_c": 21.5, "condition": "sunny"}
 
@@ -522,13 +576,6 @@ resp = llm.agent(
 
 print(resp.text)
 ```
-
-Decorator signature
-- @zenllm.tool(name=None, description=None, parameters=None, safe=False)
-  - name: override the tool name (defaults to function name)
-  - description: short description (defaults to first line of docstring)
-  - parameters: JSON Schema for arguments (auto-derived from type hints if omitted)
-  - safe: metadata you can use to mark read-only tools (reserved for future autorun policies)
 
 Passing raw specs (optional)
 ```python
@@ -593,3 +640,4 @@ d = resp.to_dict()  # bytes are base64-encoded with kind "bytes_b64"
 ## 📜 License
 
 MIT License — Copyright (c) 2025 Koen van Eijk
+[{'id': 'call_87745073', 'function': {'name': 'get_weather', 'arguments': '{"city":"Paris"}'}, 'type': 'function'}]
