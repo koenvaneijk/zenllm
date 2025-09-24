@@ -939,16 +939,22 @@ def _normalize_messages_for_chat(messages: List[Any]) -> List[Dict[str, Any]]:
             else:
                 raise ValueError("Tuple messages must be (role, text) or (role, text, images).")
             continue
-        # dict -> {role,text,images} or {role,parts}
+        # dict -> {role,text,images} or {role,parts} or raw OpenAI-like {role,content:str}
         if isinstance(m, dict):
             role = m.get("role", "user")
             if "parts" in m:
                 parts = m.get("parts") or []
                 out.append({"role": role, "content": parts})
-            else:
-                txt = m.get("text")
-                imgs = m.get("images")
-                out.append(_message_from_simple(role, txt, imgs))
+                continue
+            content = m.get("content")
+            if isinstance(content, str):
+                # Raw OpenAI-like message with string content
+                out.append({"role": role, "content": content})
+                continue
+            # Otherwise, fall back to text/images
+            txt = m.get("text")
+            imgs = m.get("images")
+            out.append(_message_from_simple(role, txt, imgs))
             continue
         raise ValueError("Unsupported message format.")
     return out
