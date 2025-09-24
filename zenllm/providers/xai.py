@@ -77,34 +77,34 @@ class XaiProvider(LLMProvider):
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("content")
-            if isinstance(content, list):
-                parts: List[Dict[str, Any]] = []
-                for p in content:
-                    if isinstance(p, dict) and p.get("type") == "text":
-                        parts.append({"type": "text", "text": p.get("text", "")})
-                    elif isinstance(p, dict) and p.get("type") == "image":
-                        source = p.get("source", {})
-                        kind = source.get("kind")
-                        detail = p.get("detail")
-                        if kind == "url":
-                            url = source.get("value")
-                            image_url_obj: Dict[str, Any] = {"url": url}
-                            if detail:
-                                image_url_obj["detail"] = detail
-                            parts.append({"type": "image_url", "image_url": image_url_obj})
-                        else:
-                            mime, b64 = self._read_image_to_base64(p)
-                            data_url = f"data:{mime};base64,{b64}"
-                            image_url_obj = {"url": data_url}
-                            if detail:
-                                image_url_obj["detail"] = detail
-                            parts.append({"type": "image_url", "image_url": image_url_obj})
+            if not isinstance(content, list):
+                # Always convert to list format for X.ai compatibility
+                content = [{"type": "text", "text": content or ""}]
+            parts: List[Dict[str, Any]] = []
+            for p in content:
+                if isinstance(p, dict) and p.get("type") == "text":
+                    parts.append({"type": "text", "text": p.get("text", "")})
+                elif isinstance(p, dict) and p.get("type") == "image":
+                    source = p.get("source", {})
+                    kind = source.get("kind")
+                    detail = p.get("detail")
+                    if kind == "url":
+                        url = source.get("value")
+                        image_url_obj: Dict[str, Any] = {"url": url}
+                        if detail:
+                            image_url_obj["detail"] = detail
+                        parts.append({"type": "image_url", "image_url": image_url_obj})
                     else:
-                        # Ignore unknown parts
-                        continue
-                out.append({"role": role, "content": parts})
-            else:
-                out.append({"role": role, "content": content})
+                        mime, b64 = self._read_image_to_base64(p)
+                        data_url = f"data:{mime};base64,{b64}"
+                        image_url_obj = {"url": data_url}
+                        if detail:
+                            image_url_obj["detail"] = detail
+                        parts.append({"type": "image_url", "image_url": image_url_obj})
+                else:
+                    # Ignore unknown parts
+                    continue
+            out.append({"role": role, "content": parts})
         return out
 
     def call(self, model, messages, system_prompt=None, stream=False, **kwargs):
