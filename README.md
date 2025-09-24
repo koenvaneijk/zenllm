@@ -170,13 +170,14 @@ if resp.tool_calls:
             tool_results.append({
                 "tool_call_id": call["id"],
                 "role": "tool",
+                "name": func_name,
                 "content": json.dumps(result),
             })
     # Append tool calls and results to messages
     messages.append({"role": "assistant", "tool_calls": resp.tool_calls})
     messages.extend(tool_results)
     # Call again for final response
-    final_resp = llm.chat(messages, tools=[get_weather], model="gpt-4o")
+    final_resp = llm.chat(messages, tools=[get_weather], model="grok-4-fast")
     print("Final response:", final_resp.text)
 ```
 

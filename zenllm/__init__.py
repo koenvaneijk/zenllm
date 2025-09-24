@@ -540,7 +540,6 @@ def _build_tool_spec(
     name: Optional[str] = None,
     description: Optional[str] = None,
     parameters: Optional[Dict[str, Any]] = None,
-    safe: bool = False,
 ) -> Dict[str, Any]:
     tname = name or fn.__name__
     desc = description or _doc_first_line(fn) or ""
@@ -549,36 +548,12 @@ def _build_tool_spec(
         "name": tname,
         "description": desc,
         "parameters": params_schema,
-        "safe": bool(safe),
         "executor": fn,
     }
-
-def tool(_fn: Optional[Callable] = None, *, name: Optional[str] = None, description: Optional[str] = None, parameters: Optional[Dict[str, Any]] = None, safe: bool = False):
-    """
-    Decorator to register a Python function as an LLM-callable tool.
-
-    Example:
-      @zenllm.tool
-      def get_weather(city: str) -> dict:
-          "Get current weather by city."
-          ...
-
-    The wrapped function will have .__zen_tool__ with:
-      {name, description, parameters (JSON Schema), safe, executor}
-    """
-    def _wrap(fn: Callable):
-        spec = _build_tool_spec(fn, name=name, description=description, parameters=parameters, safe=safe)
-        setattr(fn, "__zen_tool__", spec)
-        return fn
-
-    if _fn is None:
-        return _wrap
-    return _wrap(_fn)
 
 def _coerce_to_tool_spec(obj: Any) -> Dict[str, Any]:
     """
     Accepts:
-      - a function decorated with @tool (uses __zen_tool__)
       - any callable (derive a spec from signature)
       - a prebuilt dict spec with keys name, description, parameters
     Returns a normalized internal spec with executor where available.
@@ -592,22 +567,22 @@ def _coerce_to_tool_spec(obj: Any) -> Dict[str, Any]:
             spec["parameters"] = {"type": "object", "properties": {}, "additionalProperties": True}
         spec.setdefault("description", "")
         # No executor for raw dicts
-        return {"executor": None, "safe": False, **spec}
+        return {"executor": None, **spec}
     if callable(obj):
-        if hasattr(obj, "__zen_tool__"):
-            return getattr(obj, "__zen_tool__")
         # Derive from signature
         return _build_tool_spec(obj)
     raise ValueError("Unsupported tool type; expected callable or dict spec.")
 
 def _to_openai_tool_dict(spec: Dict[str, Any]) -> Dict[str, Any]:
+    function = {
+        "name": spec["name"],
+        "description": spec.get("description") or "",
+        "parameters": spec.get("parameters") or {"type": "object", "properties": {}},
+        "strict": True,  # Enforce strict schema adherence where supported
+    }
     return {
         "type": "function",
-        "function": {
-            "name": spec["name"],
-            "description": spec.get("description") or "",
-            "parameters": spec.get("parameters") or {"type": "object", "properties": {}},
-        },
+        "function": function,
     }
 
 def _prepare_tools(tools: Optional[List[Any]]) -> Tuple[List[Dict[str, Any]], Dict[str, Callable], List[Dict[str, Any]]]:
@@ -643,21 +618,21 @@ def agent(
     fallback: Optional["FallbackConfig"] = None,
     stream: bool = False,
     auto_run_tools: bool = False,  # default false as requested
+    max_iterations: int = 5,  # Limit loops to prevent infinite recursion
 ):
     """
     High-level helper to run a tool-enabled chat.
     - Wraps chat() and passes tool definitions via options.
-    - By default does NOT auto-execute tools (auto_run_tools=False).
-    - If auto_run_tools=True: currently not implemented end-to-end without provider tool-call parsing.
-      We will pass tool definitions and return the first assistant message.
+    - If auto_run_tools=True: Executes tool calls, appends results to messages, and continues until no more tool calls or max_iterations reached.
+    - Supports OpenAI-compatible tool call format.
 
-    Returns: Response or ResponseStream from chat().
+    Returns: Response or ResponseStream from the final chat call.
     """
     # Normalize messages using existing helper
     msgs = _normalize_messages_for_chat(messages)
 
-    # Prepare tools for request
-    _, _, request_tools = _prepare_tools(tools)
+    # Prepare tools for request: specs, exec_map, request_tools
+    tool_specs, exec_map, request_tools = _prepare_tools(tools)
 
     # Merge options with tools/tool_choice
     opts: Dict[str, Any] = {}
@@ -665,30 +640,102 @@ def agent(
         opts.update(options)
     if request_tools:
         opts["tools"] = request_tools
-        # Let the model decide when to call
-        # Many providers accept "auto" | "none" | {"type":"function","function":{"name":...}}
-        # We default to auto, but since auto_run_tools=False, we won't execute the call client-side.
         if "tool_choice" not in opts:
             opts["tool_choice"] = "auto"
 
-    if auto_run_tools:
-        warnings.warn(
-            "auto_run_tools=True is not yet fully implemented; executing tools requires provider tool-call support. "
-            "Tool definitions are sent to the model, but tool execution/looping is not performed in this version."
+    if not auto_run_tools or stream:
+        # For stream, delegate directly (no loop yet for streaming autorun)
+        if stream:
+            warnings.warn("Streaming with auto_run_tools is not supported yet; falling back to single call.")
+        return chat(
+            msgs,
+            model=model,
+            system=system,
+            stream=stream,
+            options=opts,
+            provider=provider,
+            base_url=base_url,
+            api_key=api_key,
+            fallback=fallback,
         )
 
-    # Delegate to core chat for now
-    return chat(
-        msgs,
-        model=model,
-        system=system,
-        stream=stream,
-        options=opts,
-        provider=provider,
-        base_url=base_url,
-        api_key=api_key,
-        fallback=fallback,
-    )
+    # Auto-run loop (non-streaming)
+    current_messages = [{"role": "system", "content": system}] if system else []
+    current_messages.extend(msgs)
+
+    for iteration in range(max_iterations):
+        resp = chat(
+            current_messages,
+            model=model,
+            system=None,  # System already in messages
+            stream=False,
+            options=opts,
+            provider=provider,
+            base_url=base_url,
+            api_key=api_key,
+            fallback=fallback,
+        )
+
+        # Append assistant response to messages
+        assistant_content = []
+        if resp.parts:
+            for part in resp.parts:
+                if part.get("type") == "text":
+                    assistant_content.append({"type": "text", "text": part["text"]})
+                # Handle other parts if needed
+        if resp.tool_calls:
+            for tc in resp.tool_calls:
+                assistant_content.append({
+                    "type": "function",
+                    "function": {
+                        "name": tc["function"]["name"],
+                        "arguments": tc["function"]["arguments"],
+                    },
+                })
+        current_messages.append({"role": "assistant", "content": assistant_content})
+
+        # Check if done (no tool calls or stop reason)
+        if not resp.tool_calls or resp.finish_reason in ("stop", "length"):
+            return resp
+
+        # Execute tool calls (support parallel)
+        tool_results = []
+        for tc in resp.tool_calls:
+            try:
+                func_name = tc["function"]["name"]
+                args_str = tc["function"]["arguments"]
+                args = json.loads(args_str)
+                executor = exec_map.get(func_name)
+                if executor:
+                    result = executor(**args)
+                    tool_results.append({
+                        "tool_call_id": tc["id"],
+                        "role": "tool",
+                        "name": func_name,
+                        "content": json.dumps(result),
+                    })
+                else:
+                    # Fallback: error
+                    tool_results.append({
+                        "tool_call_id": tc["id"],
+                        "role": "tool",
+                        "name": func_name,
+                        "content": json.dumps({"error": f"Tool '{func_name}' not found"}),
+                    })
+            except Exception as e:
+                tool_results.append({
+                    "tool_call_id": tc["id"],
+                    "role": "tool",
+                    "name": func_name,
+                    "content": json.dumps({"error": str(e)}),
+                })
+
+        # Append tool results to messages
+        current_messages.extend(tool_results)
+
+    # Max iterations reached
+    warnings.warn(f"Agent reached max_iterations={max_iterations} without completing.")
+    return resp
 
 # ---- Response types ----
 
