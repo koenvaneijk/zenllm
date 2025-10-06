@@ -159,6 +159,7 @@ class AnthropicProvider(LLMProvider):
             "model": model or self.DEFAULT_MODEL,
             "messages": self._to_anthropic_messages(messages),
             "stream": stream,
+            "max_tokens": kwargs.get("max_tokens", 1024),
         }
 
         if system_prompt:
@@ -215,7 +216,7 @@ class AnthropicProvider(LLMProvider):
                     "type": "function",
                     "function": {
                         "name": b.get("name"),
-                        "arguments": b.get("input", {}),  # Anthropic uses 'input' as dict
+                        "arguments": json.dumps(b.get("input", {})),  # Anthropic uses 'input' as dict
                     },
                 })
         finish_reason = data.get("stop_reason")
