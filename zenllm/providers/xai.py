@@ -11,7 +11,7 @@ from .base import LLMProvider
 class XaiProvider(LLMProvider):
     BASE_URL = "https://api.x.ai/v1"
     API_KEY_NAME = "XAI_API_KEY"
-    DEFAULT_MODEL = "grok-code-fast-1"
+    DEFAULT_MODEL = "grok-4-fast"
 
     def _check_api_key(self):
         api_key = os.getenv(self.API_KEY_NAME)
