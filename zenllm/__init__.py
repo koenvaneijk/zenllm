@@ -20,6 +20,7 @@ from .pricing import estimate_cost as _estimate_cost
 # ---- Providers registry and selection ----
 
 _PROVIDERS = {
+    "anthropic": AnthropicProvider(),
     "claude": AnthropicProvider(),
     "gemini": GoogleProvider(),
     "gpt": OpenAIProvider(),
