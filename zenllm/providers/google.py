@@ -28,7 +28,7 @@ GOOGLE_PRICING = [
 
 
 class GoogleProvider(LLMProvider):
-    API_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:{method}?key={api_key}"
+    API_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:{method}"
     API_KEY_NAME = "GEMINI_API_KEY"
     DEFAULT_MODEL = "gemini-2.5-pro"
 
@@ -144,6 +144,9 @@ class GoogleProvider(LLMProvider):
     def call(self, model, messages, system_prompt=None, stream=False, **kwargs):
         api_key = self._check_api_key()
 
+        # Normalize model name to remove any erroneous prefix
+        model = (model or self.DEFAULT_MODEL).replace("gemini-models/", "")
+
         contents: List[Dict[str, Any]] = []
 
         # Build contents with proper roles and parts
@@ -211,12 +214,14 @@ class GoogleProvider(LLMProvider):
 
         method = "streamGenerateContent" if stream else "generateContent"
         api_url = self.API_URL_TEMPLATE.format(
-            model=(model or self.DEFAULT_MODEL),
-            method=method,
-            api_key=api_key
+            model=model,
+            method=method
         )
 
-        headers = {'Content-Type': 'application/json'}
+        headers = {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': api_key
+        }
         response = requests.post(api_url, headers=headers, json=payload, stream=stream)
         response.raise_for_status()
 
