@@ -1,23 +1,4 @@
-tool_results = []
-    for call in resp.tool_calls:
-        func_name = call["function"]["name"]
-        args_str = call["function"]["arguments"]
-        args = json.loads(args_str)
-        # Assume we have a map of name to function
-        if func_name == "get_weather":
-            result = get_weather(**args)
-            tool_results.append({
-                "role": "tool",
-                "tool_call_id": call["id"],
-                "name": func_name,
-                "content": json.dumps(result),
-            })
-    # Append tool calls and results to messages
-    messages.append({"role": "assistant", "tool_calls": resp.tool_calls})
-    messages.extend(tool_results)
-    # Call again for final response
-    final_resp = llm.chat(messages, tools=[get_weather], model="gpt-4o")
-    print("Final response:", final_resp.text)# 🧘‍♂️ ZenLLM
+# 🧘‍♂️ ZenLLM
 
 [![PyPI version](https://badge.fury.io/py/zenllm.svg)](https://badge.fury.io/py/zenllm)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
