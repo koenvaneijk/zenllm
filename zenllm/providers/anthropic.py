@@ -155,15 +155,37 @@ class AnthropicProvider(LLMProvider):
         tools = kwargs.pop("tools", None)
         tool_choice = kwargs.pop("tool_choice", None)
 
+        # Extract system messages and combine with system_prompt
+        system_parts = []
+        filtered_messages = []
+        for msg in messages:
+            if msg.get("role") == "system":
+                content = msg.get("content")
+                if isinstance(content, list):
+                    for p in content:
+                        if p.get("type") == "text":
+                            system_parts.append(p.get("text", ""))
+                else:
+                    system_parts.append(str(content))
+            else:
+                filtered_messages.append(msg)
+
+        system_text = "\n".join(system_parts)
+        if system_prompt:
+            if system_text:
+                system_text = system_prompt + "\n\n" + system_text
+            else:
+                system_text = system_prompt
+
         payload = {
             "model": model or self.DEFAULT_MODEL,
-            "messages": self._to_anthropic_messages(messages),
+            "messages": self._to_anthropic_messages(filtered_messages),
             "stream": stream,
             "max_tokens": kwargs.get("max_tokens", 1024),
         }
 
-        if system_prompt:
-            payload["system"] = system_prompt
+        if system_text:
+            payload["system"] = system_text
 
         if tools:
             anthropic_tools = []
